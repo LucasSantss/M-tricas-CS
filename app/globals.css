@@ -239,14 +239,12 @@ h1{ font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4
 
 /* DEPARTMENT PANEL */
 .dept-row{
-  display: grid;
-  grid-template-columns: minmax(380px, 520px) 1fr;
-  gap: 20px;
+  display: flex;
   align-items: start;
   margin-bottom: 24px;
 }
 .dept-callouts{ display:flex; flex-direction:column; gap: 10px; padding-top: 2px; }
-.dept{ border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.dept{ border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); width: 80vh; }
 .dept-head{ display:flex; align-items:baseline; justify-content: space-between; padding: 18px 22px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
 .dept-head h2{ font-size: 17px; font-weight: 600; }
 .dept-status{ font-family:'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-dim); }
