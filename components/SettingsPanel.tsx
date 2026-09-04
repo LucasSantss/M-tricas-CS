@@ -156,36 +156,33 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
     await syncAttendants();
   }
 
-  const configured = Boolean(config?.chatbotUrl && config?.hasToken);
-
   return (
     <div className="settings-body">
       {error && <div className="error-box">{error}</div>}
 
       <section className="settings-section">
-        <div className="settings-section-title">Conexão</div>
-        <div className="conn-status">
-          <span className={`status-dot ${configured ? "ok" : "bad"}`} />
-          {config?.connectionLocked ? (
-            <span>
-              URL e token definidos por variável de ambiente
-              <span className="hint" style={{ marginLeft: 6 }}>({config?.chatbotUrl})</span>
-            </span>
-          ) : configured ? (
-            <span>Conectado, mas fora do padrão de env var — defina SURI_CHATBOT_URL e SURI_BEARER_TOKEN para travar.</span>
-          ) : (
-            <span>Não conectado — defina SURI_CHATBOT_URL e SURI_BEARER_TOKEN nas variáveis de ambiente e reinicie/faça redeploy.</span>
-          )}
+        <div className="settings-section-title">Opções</div>
+        <div className="dept-toggle-list">
+          <button
+            type="button"
+            className={`dept-toggle ${useBusinessHours ? "on" : "off"}`}
+            aria-pressed={useBusinessHours}
+            onClick={() => setUseBusinessHours((v) => !v)}
+          >
+            <span className="dept-toggle-check" />
+            Considerar apenas horário comercial
+          </button>
+          <button
+            type="button"
+            className={`dept-toggle ${getCurrent ? "on" : "off"}`}
+            aria-pressed={getCurrent}
+            onClick={() => setGetCurrent((v) => !v)}
+          >
+            <span className="dept-toggle-check" />
+            Incluir atendimentos em andamento
+          </button>
         </div>
         <div className="settings-row">
-          <label className="checkbox-field">
-            <input type="checkbox" checked={useBusinessHours} onChange={(e) => setUseBusinessHours(e.target.checked)} />
-            Considerar apenas horário comercial
-          </label>
-          <label className="checkbox-field">
-            <input type="checkbox" checked={getCurrent} onChange={(e) => setGetCurrent(e.target.checked)} />
-            Incluir atendimentos em andamento
-          </label>
           <button className="btn primary" disabled={savingConfig} onClick={saveConfig}>
             {savingConfig ? "Salvando…" : "Salvar opções"}
           </button>
@@ -213,7 +210,15 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
         <div className="dept-list">
           {drafts.map((d, i) => (
             <div className="dept-config-row" key={d.id}>
-              <input type="checkbox" checked={d.active} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, active: e.target.checked } : x)))} />
+              <label className="switch" title={d.active ? "Setor ativo — clique para ocultar" : "Setor oculto — clique para mostrar"}>
+                <input
+                  type="checkbox"
+                  checked={d.active}
+                  onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, active: e.target.checked } : x)))}
+                />
+                <span className="switch-track" />
+                <span className="switch-thumb" />
+              </label>
               <input
                 type="text"
                 value={d.name}

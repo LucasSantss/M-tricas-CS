@@ -5,6 +5,7 @@ import type { ConfigResponse, DepartmentDto, WeekDto } from "@/lib/types";
 import type { ReportResult } from "@/lib/metrics";
 import { isFresh, readReportCache, writeReportCache } from "@/lib/reportCache";
 import { readAttendantFilter, writeAttendantFilter } from "@/lib/attendantFilter";
+import { readDashboardPrefs, writeDashboardPrefs } from "@/lib/dashboardPrefs";
 import SettingsPanel from "./SettingsPanel";
 import SettingsModal from "./SettingsModal";
 import TopBar from "./TopBar";
@@ -50,6 +51,26 @@ export default function Dashboard() {
     writeAttendantFilter(ids);
   }, []);
 
+  // restaura ano/mês/semana/setores da última visita (cache do navegador, por pessoa)
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  useEffect(() => {
+    const prefs = readDashboardPrefs();
+    if (prefs.year) setYear(prefs.year);
+    if (prefs.month) setMonth(prefs.month);
+    if (prefs.weekStart) setWeekStart(prefs.weekStart);
+    if (prefs.deptIds !== undefined) setSelectedDeptIds(prefs.deptIds ? new Set(prefs.deptIds) : null);
+    setPrefsLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    writeDashboardPrefs({
+      year,
+      month,
+      weekStart,
+      deptIds: selectedDeptIds ? Array.from(selectedDeptIds) : null,
+    });
+  }, [prefsLoaded, year, month, weekStart, selectedDeptIds]);
+
   const [report, setReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -82,6 +103,7 @@ export default function Dashboard() {
   }, [config, checkedInitialConfig]);
 
   useEffect(() => {
+    if (!prefsLoaded) return; // espera restaurar ano/mês/semana do cache antes de buscar, pra não sobrescrever com o mês atual
     (async () => {
       const res = await fetch(`/api/weeks?year=${year}&month=${month}`);
       const json = await res.json();
@@ -92,7 +114,7 @@ export default function Dashboard() {
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
-  }, [year, month]);
+  }, [year, month, prefsLoaded]);
 
   const loadReport = useCallback(
     async (force = false) => {

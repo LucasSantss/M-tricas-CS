@@ -38,9 +38,6 @@ export default function DepartmentCard({ report, highlights, attention }: Props)
                 <span className="sep">→</span>
                 <span className="to">{m.to}</span>
                 <span className="goal">{m.goalLabel}</span>
-                {m.key === "csat" && m.isImprovement === true && report.respostas.current > 0 && (
-                  <span className="badge-star">★ maior nota</span>
-                )}
               </div>
               <DeltaBadge pct={m.deltaPct} isImprovement={m.isImprovement} />
               <div className="meta-flag">
