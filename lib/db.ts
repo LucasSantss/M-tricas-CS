@@ -16,6 +16,8 @@ export type AppSettings = {
   useBusinessHours: boolean;
   /** Inclui atendimentos ainda em andamento (getCurrent na API Suri) */
   getCurrent: boolean;
+  /** true quando URL/token vêm de env var (SURI_CHATBOT_URL/SURI_BEARER_TOKEN) e não podem ser editados pela UI */
+  connectionLocked: boolean;
 };
 
 export type KnownAttendant = { id: string; name: string };
@@ -78,15 +80,20 @@ export async function ensureSchema() {
 }
 
 export async function getSettings(): Promise<AppSettings> {
+  const envUrl = process.env.SURI_CHATBOT_URL?.trim() || null;
+  const envToken = process.env.SURI_BEARER_TOKEN?.trim() || null;
+  const connectionLocked = Boolean(envUrl && envToken);
+
   const sql = getSql();
   await ensureSchema();
   const rows = await sql`SELECT chatbot_url, bearer_token, use_business_hours, get_current FROM app_settings WHERE id = 1`;
   const row = rows[0] as any;
   return {
-    chatbotUrl: row?.chatbot_url ?? null,
-    bearerToken: row?.bearer_token ?? null,
+    chatbotUrl: connectionLocked ? envUrl : row?.chatbot_url ?? null,
+    bearerToken: connectionLocked ? envToken : row?.bearer_token ?? null,
     useBusinessHours: row?.use_business_hours ?? false,
     getCurrent: row?.get_current ?? false,
+    connectionLocked,
   };
 }
 
@@ -99,8 +106,10 @@ export async function saveSettings(input: {
   const sql = getSql();
   await ensureSchema();
   const current = await getSettings();
-  const chatbotUrl = input.chatbotUrl ?? current.chatbotUrl;
-  const bearerToken = input.bearerToken ?? current.bearerToken;
+  // Quando a conexão vem de env var (SURI_CHATBOT_URL/SURI_BEARER_TOKEN), ela é fixa —
+  // ignora qualquer chatbotUrl/bearerToken vindo da UI e nunca sobrescreve o banco com eles.
+  const chatbotUrl = current.connectionLocked ? current.chatbotUrl : input.chatbotUrl ?? current.chatbotUrl;
+  const bearerToken = current.connectionLocked ? current.bearerToken : input.bearerToken ?? current.bearerToken;
   const useBusinessHours = input.useBusinessHours ?? current.useBusinessHours;
   const getCurrent = input.getCurrent ?? current.getCurrent;
   await sql`

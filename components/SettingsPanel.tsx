@@ -17,8 +17,6 @@ function toDraft(d: DepartmentDto): DraftDept {
 }
 
 export default function SettingsPanel({ config, departments, onConfigSaved, onDepartmentsChanged }: Props) {
-  const [chatbotUrl, setChatbotUrl] = useState(config?.chatbotUrl ?? "");
-  const [bearerToken, setBearerToken] = useState("");
   const [useBusinessHours, setUseBusinessHours] = useState(config?.useBusinessHours ?? false);
   const [getCurrent, setGetCurrent] = useState(config?.getCurrent ?? false);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -33,7 +31,6 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
   const [syncingAttendants, setSyncingAttendants] = useState(false);
   const [syncSummary, setSyncSummary] = useState<{ name: string; attendantCount: number }[] | null>(null);
 
-  useEffect(() => setChatbotUrl(config?.chatbotUrl ?? ""), [config?.chatbotUrl]);
   useEffect(() => setUseBusinessHours(config?.useBusinessHours ?? false), [config?.useBusinessHours]);
   useEffect(() => setGetCurrent(config?.getCurrent ?? false), [config?.getCurrent]);
   useEffect(() => setDrafts(departments.map(toDraft)), [departments]);
@@ -45,16 +42,10 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
       const res = await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatbotUrl,
-          bearerToken: bearerToken.trim() === "" ? undefined : bearerToken.trim(),
-          useBusinessHours,
-          getCurrent,
-        }),
+        body: JSON.stringify({ useBusinessHours, getCurrent }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Falha ao salvar");
-      setBearerToken("");
       onConfigSaved();
     } catch (e: any) {
       setError(e.message);
@@ -188,15 +179,18 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
 
       <section className="settings-section">
         <div className="settings-section-title">Conexão</div>
-        <div className="settings-row">
-          <div className="field grow">
-            <label>URL do chatbot</label>
-            <input type="text" value={chatbotUrl} onChange={(e) => setChatbotUrl(e.target.value)} placeholder="https://sua-instancia.azurewebsites.net" />
-          </div>
-          <div className="field grow">
-            <label>Bearer token {config?.hasToken && <span className="hint">(configurado)</span>}</label>
-            <input type="password" value={bearerToken} onChange={(e) => setBearerToken(e.target.value)} placeholder={config?.hasToken ? "•••••••• (deixe em branco pra manter)" : "cole o token aqui"} />
-          </div>
+        <div className="conn-status">
+          <span className={`status-dot ${configured ? "ok" : "bad"}`} />
+          {config?.connectionLocked ? (
+            <span>
+              URL e token definidos por variável de ambiente
+              <span className="hint" style={{ marginLeft: 6 }}>({config?.chatbotUrl})</span>
+            </span>
+          ) : configured ? (
+            <span>Conectado, mas fora do padrão de env var — defina SURI_CHATBOT_URL e SURI_BEARER_TOKEN para travar.</span>
+          ) : (
+            <span>Não conectado — defina SURI_CHATBOT_URL e SURI_BEARER_TOKEN nas variáveis de ambiente e reinicie/faça redeploy.</span>
+          )}
         </div>
         <div className="settings-row">
           <label className="checkbox-field">
@@ -208,7 +202,7 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
             Incluir atendimentos em andamento
           </label>
           <button className="btn primary" disabled={savingConfig} onClick={saveConfig}>
-            {savingConfig ? "Salvando…" : "Salvar acesso"}
+            {savingConfig ? "Salvando…" : "Salvar opções"}
           </button>
         </div>
       </section>
@@ -221,6 +215,7 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
           </span>
         </div>
 
+        <div className="dept-config-table">
         <div className="dept-config-head">
           <span></span>
           <span>Setor</span>
@@ -270,6 +265,7 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
             </div>
           ))}
           {drafts.length === 0 && <div className="hint">Nenhum setor cadastrado ainda.</div>}
+        </div>
         </div>
 
         <div className="settings-row">

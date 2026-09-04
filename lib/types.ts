@@ -3,6 +3,7 @@ export type ConfigResponse = {
   hasToken: boolean;
   useBusinessHours: boolean;
   getCurrent: boolean;
+  connectionLocked: boolean;
 };
 
 export type DepartmentDto = {

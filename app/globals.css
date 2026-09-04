@@ -85,8 +85,8 @@ body{
   overflow-y: auto;
 }
 .modal-panel{
-  width: 100%;
-  max-width: 680px;
+  width: min(94vw, 920px);
+  max-width: 100vw;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -195,16 +195,40 @@ h1{ font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4
 .btn:disabled{ opacity: .5; cursor: default; }
 .btn.small{ padding: 4px 9px; font-size: 11.5px; }
 
-.dept-list{ display:flex; flex-direction:column; gap:8px; }
-.dept-config-row{
-  display:grid;
-  grid-template-columns: 20px minmax(140px, 1fr) repeat(4, 90px) auto;
-  gap: 8px;
+.conn-status{
+  display:flex;
   align-items:center;
-  font-size: 12px;
-  padding: 6px 0;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+
+.dept-config-table{
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.dept-list{ display:flex; flex-direction:column; }
+.dept-config-row, .dept-config-head{
+  display:grid;
+  /* mesma grade nas duas linhas, com a coluna de setor limitada em vez de 1fr,
+     para que cabeçalho e valores fiquem sempre alinhados independente da largura do modal */
+  grid-template-columns: 20px minmax(160px, 300px) repeat(4, 88px) auto;
+  justify-content: start;
+  gap: 10px;
+  align-items:center;
+}
+.dept-config-row{
+  font-size: 12.5px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
+.dept-config-row:hover{ background: var(--panel-2); }
 .dept-config-row:last-child{ border-bottom:none; }
 .dept-config-row input[type=text], .dept-config-row input[type=number]{
   width:100%;
@@ -212,20 +236,22 @@ h1{ font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4
   border: 1px solid var(--line);
   border-radius: 5px;
   color: var(--text);
-  padding: 5px 6px;
-  font-size: 12px;
+  padding: 6px 7px;
+  font-size: 12.5px;
   font-family: 'IBM Plex Mono', monospace;
 }
 .dept-config-head{
-  display:grid;
-  grid-template-columns: 20px minmax(140px, 1fr) repeat(4, 90px) auto;
-  gap: 8px;
   font-size: 10.5px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .04em;
   color: var(--text-faint);
-  padding-bottom: 4px;
+  padding: 8px 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
 }
+.dept-config-head span:nth-child(n+3){ text-align:center; }
+.dept-config-row input[type=number]{ text-align:center; }
 
 .error-box{
   border: 1px solid var(--bad);

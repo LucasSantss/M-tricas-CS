@@ -11,6 +11,7 @@ export async function GET() {
       hasToken: Boolean(settings.bearerToken),
       useBusinessHours: settings.useBusinessHours,
       getCurrent: settings.getCurrent,
+      connectionLocked: settings.connectionLocked,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

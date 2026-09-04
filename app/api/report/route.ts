@@ -36,11 +36,16 @@ export async function GET(req: NextRequest) {
     // setor ativo, para as duas semanas em paralelo.
     const perDepartment = await Promise.all(
       departments.map(async (dept) => {
+        // Se o setor tem atendentes específicos selecionados, filtra direto na
+        // API Suri (aceita um único attendantId ou uma lista, como no Postman).
+        const attendantId =
+          dept.attendantIds.length === 0 ? undefined : dept.attendantIds.length === 1 ? dept.attendantIds[0] : dept.attendantIds;
         const [current, previous] = await Promise.all([
           fetchAttendances(settings.chatbotUrl!, settings.bearerToken!, {
             dateFrom: currentWeek.mondayDate,
             dateTo: currentWeek.saturdayDate,
             departmentId: dept.departmentId,
+            attendantId,
             getCurrent: settings.getCurrent,
             useBusinessHours: settings.useBusinessHours,
           }),
@@ -48,6 +53,7 @@ export async function GET(req: NextRequest) {
             dateFrom: prevWeek.mondayDate,
             dateTo: prevWeek.saturdayDate,
             departmentId: dept.departmentId,
+            attendantId,
             getCurrent: settings.getCurrent,
             useBusinessHours: settings.useBusinessHours,
           }),

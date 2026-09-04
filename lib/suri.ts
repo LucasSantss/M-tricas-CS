@@ -20,7 +20,8 @@ export type FetchAttendancesOptions = {
   dateTo: string;
   /** Filtra na própria API por setor, exemplo real do Postman: "departmentId": "cb1020285" */
   departmentId?: string | null;
-  attendantId?: string | null;
+  /** Filtra na própria API por atendente(s) — aceita um único id ou uma lista (exemplo real do Postman) */
+  attendantId?: string | string[] | null;
   channelId?: string | null;
   /** Inclui atendimentos ainda em andamento (não finalizados) */
   getCurrent?: boolean;
