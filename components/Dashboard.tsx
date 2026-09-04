@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ConfigResponse, DepartmentDto, WeekDto } from "@/lib/types";
 import type { ReportResult } from "@/lib/metrics";
+import { isFresh, readReportCache, writeReportCache } from "@/lib/reportCache";
 import SettingsPanel from "./SettingsPanel";
 import SettingsModal from "./SettingsModal";
 import TopBar from "./TopBar";
@@ -38,7 +39,9 @@ export default function Dashboard() {
 
   const [report, setReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reportSavedAt, setReportSavedAt] = useState<number | null>(null);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -78,24 +81,39 @@ export default function Dashboard() {
     })();
   }, [year, quarter]);
 
-  const loadReport = useCallback(async () => {
-    if (!weekStart || !config?.chatbotUrl || !config?.hasToken) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const idsParam =
-        selectedDeptIds && selectedDeptIds.size > 0 ? `&departmentIds=${Array.from(selectedDeptIds).join(",")}` : "";
-      const res = await fetch(`/api/report?weekStart=${weekStart}${idsParam}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Falha ao carregar relatório");
-      setReport(json);
-    } catch (e: any) {
-      setError(e.message);
-      setReport(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [weekStart, config, selectedDeptIds]);
+  const loadReport = useCallback(
+    async (force = false) => {
+      if (!weekStart || !config?.chatbotUrl || !config?.hasToken) return;
+      const deptIdsArr = selectedDeptIds ? Array.from(selectedDeptIds) : null;
+      setError(null);
+
+      const cached = force ? null : readReportCache(weekStart, deptIdsArr);
+      if (cached) {
+        setReport(cached.report);
+        setReportSavedAt(cached.savedAt);
+        if (isFresh(cached.savedAt)) return; // cache ainda fresco, não busca de novo
+      }
+
+      if (cached) setRefreshing(true);
+      else setLoading(true);
+      try {
+        const idsParam = deptIdsArr && deptIdsArr.length > 0 ? `&departmentIds=${deptIdsArr.join(",")}` : "";
+        const res = await fetch(`/api/report?weekStart=${weekStart}${idsParam}`);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? "Falha ao carregar relatório");
+        setReport(json);
+        writeReportCache(weekStart, deptIdsArr, json);
+        setReportSavedAt(Date.now());
+      } catch (e: any) {
+        setError(e.message);
+        if (!cached) setReport(null);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [weekStart, config, selectedDeptIds]
+  );
 
   useEffect(() => {
     loadReport();
@@ -120,7 +138,19 @@ export default function Dashboard() {
       <div className="wrap">
         <header>
           <div className="greeting">Time, bom dia!</div>
-          <h1>Termômetro Operacional</h1>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <h1>Termômetro Operacional</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {reportSavedAt && (
+                <span className="hint">
+                  Atualizado às {new Date(reportSavedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+              <button className="btn small" disabled={loading || refreshing} onClick={() => loadReport(true)}>
+                {refreshing ? "Recarregando…" : "🔄 Recarregar"}
+              </button>
+            </div>
+          </div>
           {report && (
             <div className="subtitle">
               {report.previousWeek.label} → {report.currentWeek.label} · comparativo de TME, TMA, TMR, CSAT e volume por setor
