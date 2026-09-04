@@ -72,19 +72,18 @@ export function previousWeek(mondayDateStr: string): WeekRange {
   return weekRangeForMonday(dateStr(prevMondayLocal));
 }
 
-/** Lista as semanas (segunda a segunda) cujo início cai dentro do trimestre informado. */
-export function getWeeksForQuarter(year: number, quarter: 1 | 2 | 3 | 4): WeekRange[] {
-  const startMonth = (quarter - 1) * 3;
-  const quarterStart = new Date(Date.UTC(year, startMonth, 1));
-  const quarterEnd = new Date(Date.UTC(year, startMonth + 3, 0)); // último dia do trimestre
+/** Lista as semanas (segunda a segunda) cujo início cai dentro do mês informado (1-12), sempre começando pela primeira semana do mês. */
+export function getWeeksForMonth(year: number, month: number): WeekRange[] {
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = new Date(Date.UTC(year, month, 0)); // último dia do mês
 
-  let monday = mondayLocalFromLocalShifted(quarterStart);
-  if (monday.getTime() < quarterStart.getTime()) {
+  let monday = mondayLocalFromLocalShifted(monthStart);
+  if (monday.getTime() < monthStart.getTime()) {
     monday = new Date(monday.getTime() + 7 * 86400000);
   }
 
   const weeks: WeekRange[] = [];
-  while (monday.getTime() <= quarterEnd.getTime()) {
+  while (monday.getTime() <= monthEnd.getTime()) {
     weeks.push(weekRangeForMonday(dateStr(monday)));
     monday = new Date(monday.getTime() + 7 * 86400000);
   }

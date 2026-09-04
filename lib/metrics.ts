@@ -97,14 +97,15 @@ function aggregate(records: SuriAttendance[]): Agg {
   return a;
 }
 
-/** Registros de um setor, já restritos aos atendentes selecionados (se houver). */
+/**
+ * Registros de um setor. O filtro de atendente(s) (setor ou pessoal) já é
+ * aplicado na própria chamada à API Suri (ver app/api/report/route.ts); aqui
+ * só garantimos que cada registro pertence de fato ao setor certo.
+ */
 function recordsForDepartment(records: SuriAttendance[], dept: Department): SuriAttendance[] {
-  const attendantFilter = dept.attendantIds.length > 0 ? new Set(dept.attendantIds) : null;
   return records.filter((r) => {
     const key = r.departmentId ?? r.departmentName ?? "sem-setor";
-    if (key !== dept.departmentId) return false;
-    if (attendantFilter && (!r.attendantId || !attendantFilter.has(r.attendantId))) return false;
-    return true;
+    return key === dept.departmentId;
   });
 }
 

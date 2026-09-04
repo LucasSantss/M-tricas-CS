@@ -4,21 +4,27 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ConfigResponse, DepartmentDto, WeekDto } from "@/lib/types";
 import type { ReportResult } from "@/lib/metrics";
 import { isFresh, readReportCache, writeReportCache } from "@/lib/reportCache";
+import { readAttendantFilter, writeAttendantFilter } from "@/lib/attendantFilter";
 import SettingsPanel from "./SettingsPanel";
 import SettingsModal from "./SettingsModal";
 import TopBar from "./TopBar";
 import DepartmentCard from "./DepartmentCard";
+import AttendantFilter from "./AttendantFilter";
 
-const QUARTERS = [
-  { value: 1, label: "1º trimestre (jan–mar)" },
-  { value: 2, label: "2º trimestre (abr–jun)" },
-  { value: 3, label: "3º trimestre (jul–set)" },
-  { value: 4, label: "4º trimestre (out–dez)" },
+const MONTHS = [
+  { value: 1, label: "Janeiro" },
+  { value: 2, label: "Fevereiro" },
+  { value: 3, label: "Março" },
+  { value: 4, label: "Abril" },
+  { value: 5, label: "Maio" },
+  { value: 6, label: "Junho" },
+  { value: 7, label: "Julho" },
+  { value: 8, label: "Agosto" },
+  { value: 9, label: "Setembro" },
+  { value: 10, label: "Outubro" },
+  { value: 11, label: "Novembro" },
+  { value: 12, label: "Dezembro" },
 ];
-
-function currentQuarter(month: number): 1 | 2 | 3 | 4 {
-  return (Math.floor(month / 3) + 1) as 1 | 2 | 3 | 4;
-}
 
 /** "YYYY-MM-DD" -> "DD/MM/YYYY", sem passar por Date/fuso do navegador. */
 function formatBr(isoDate: string): string {
@@ -29,13 +35,20 @@ function formatBr(isoDate: string): string {
 export default function Dashboard() {
   const now = useMemo(() => new Date(), []);
   const [year, setYear] = useState(now.getFullYear());
-  const [quarter, setQuarter] = useState<1 | 2 | 3 | 4>(currentQuarter(now.getMonth()));
+  const [month, setMonth] = useState(now.getMonth() + 1);
   const [weeks, setWeeks] = useState<WeekDto[]>([]);
   const [weekStart, setWeekStart] = useState<string>("");
 
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [departments, setDepartments] = useState<DepartmentDto[]>([]);
   const [selectedDeptIds, setSelectedDeptIds] = useState<Set<string> | null>(null); // null = todos
+  // filtro pessoal de atendentes — só existe no navegador (localStorage), nunca no banco
+  const [selectedAttendantIds, setSelectedAttendantIds] = useState<string[]>([]);
+  useEffect(() => setSelectedAttendantIds(readAttendantFilter()), []);
+  const updateAttendantFilter = useCallback((ids: string[]) => {
+    setSelectedAttendantIds(ids);
+    writeAttendantFilter(ids);
+  }, []);
 
   const [report, setReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -70,7 +83,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     (async () => {
-      const res = await fetch(`/api/weeks?year=${year}&quarter=${quarter}`);
+      const res = await fetch(`/api/weeks?year=${year}&month=${month}`);
       const json = await res.json();
       const list: WeekDto[] = json.weeks ?? [];
       setWeeks(list);
@@ -79,15 +92,16 @@ export default function Dashboard() {
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
-  }, [year, quarter]);
+  }, [year, month]);
 
   const loadReport = useCallback(
     async (force = false) => {
       if (!weekStart || !config?.chatbotUrl || !config?.hasToken) return;
       const deptIdsArr = selectedDeptIds ? Array.from(selectedDeptIds) : null;
+      const attendantIdsArr = selectedAttendantIds.length > 0 ? selectedAttendantIds : null;
       setError(null);
 
-      const cached = force ? null : readReportCache(weekStart, deptIdsArr);
+      const cached = force ? null : readReportCache(weekStart, deptIdsArr, attendantIdsArr);
       if (cached) {
         setReport(cached.report);
         setReportSavedAt(cached.savedAt);
@@ -98,11 +112,12 @@ export default function Dashboard() {
       else setLoading(true);
       try {
         const idsParam = deptIdsArr && deptIdsArr.length > 0 ? `&departmentIds=${deptIdsArr.join(",")}` : "";
-        const res = await fetch(`/api/report?weekStart=${weekStart}${idsParam}`);
+        const attendantsParam = attendantIdsArr ? `&attendantIds=${attendantIdsArr.join(",")}` : "";
+        const res = await fetch(`/api/report?weekStart=${weekStart}${idsParam}${attendantsParam}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? "Falha ao carregar relatório");
         setReport(json);
-        writeReportCache(weekStart, deptIdsArr, json);
+        writeReportCache(weekStart, deptIdsArr, attendantIdsArr, json);
         setReportSavedAt(Date.now());
       } catch (e: any) {
         setError(e.message);
@@ -112,7 +127,7 @@ export default function Dashboard() {
         setRefreshing(false);
       }
     },
-    [weekStart, config, selectedDeptIds]
+    [weekStart, config, selectedDeptIds, selectedAttendantIds]
   );
 
   useEffect(() => {
@@ -141,11 +156,7 @@ export default function Dashboard() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <h1>Termômetro Operacional</h1>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {reportSavedAt && (
-                <span className="hint">
-                  Atualizado às {new Date(reportSavedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              )}
+              
               <button className="btn small" disabled={loading || refreshing} onClick={() => loadReport(true)}>
                 {refreshing ? "Recarregando…" : "🔄 Recarregar"}
               </button>
@@ -164,11 +175,11 @@ export default function Dashboard() {
           <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 90 }} />
         </div>
         <div className="field">
-          <label>Trimestre</label>
-          <select value={quarter} onChange={(e) => setQuarter(Number(e.target.value) as 1 | 2 | 3 | 4)}>
-            {QUARTERS.map((q) => (
-              <option key={q.value} value={q.value}>
-                {q.label}
+          <label>Mês</label>
+          <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+            {MONTHS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
               </option>
             ))}
           </select>
@@ -184,16 +195,23 @@ export default function Dashboard() {
           </select>
         </div>
         {activeDepartments.length > 0 && (
+          <div className="field">
+            <label>Atendente</label>
+            <AttendantFilter departments={activeDepartments} selected={selectedAttendantIds} onChange={updateAttendantFilter} />
+          </div>
+        )}
+        {activeDepartments.length > 0 && (
           <div className="field grow">
             <label>Setores no relatório</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <div className="dept-toggle-list">
               {activeDepartments.map((d) => {
                 const isOn = !selectedDeptIds || selectedDeptIds.has(d.departmentId);
                 return (
                   <button
                     key={d.departmentId}
-                    className="btn small"
-                    style={{ opacity: isOn ? 1 : 0.45 }}
+                    type="button"
+                    className={`dept-toggle ${isOn ? "on" : "off"}`}
+                    aria-pressed={isOn}
                     onClick={() =>
                       setSelectedDeptIds((prev) => {
                         const all = new Set(activeDepartments.map((x) => x.departmentId));
@@ -205,6 +223,7 @@ export default function Dashboard() {
                       })
                     }
                   >
+                    <span className="dept-toggle-check" />
                     {d.name}
                   </button>
                 );

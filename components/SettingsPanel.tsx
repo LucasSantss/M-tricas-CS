@@ -26,7 +26,6 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
   const [discovered, setDiscovered] = useState<{ departmentId: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const [expandedDeptId, setExpandedDeptId] = useState<number | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [syncingAttendants, setSyncingAttendants] = useState(false);
   const [syncSummary, setSyncSummary] = useState<{ name: string; attendantCount: number }[] | null>(null);
@@ -80,10 +79,6 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
     }
   }
 
-  function toggleExpanded(d: DraftDept) {
-    setExpandedDeptId((cur) => (cur === d.id ? null : d.id));
-  }
-
   async function syncAttendants() {
     setSyncingAttendants(true);
     setError(null);
@@ -103,16 +98,6 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
     } finally {
       setSyncingAttendants(false);
     }
-  }
-
-  function toggleAttendant(i: number, attendantId: string) {
-    setDrafts((arr) =>
-      arr.map((x, j) => {
-        if (j !== i) return x;
-        const has = x.attendantIds.includes(attendantId);
-        return { ...x, attendantIds: has ? x.attendantIds.filter((id) => id !== attendantId) : [...x.attendantIds, attendantId] };
-      })
-    );
   }
 
   async function removeDepartment(id: number) {
@@ -240,32 +225,17 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
               <input type="number" step="0.5" value={d.goalTmrMin} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalTmrMin: Number(e.target.value) } : x)))} />
               <input type="number" step="0.1" min="0" max="5" value={d.goalCsat} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalCsat: Number(e.target.value) } : x)))} />
               <div style={{ display: "flex", gap: 6 }}>
-                <button className="btn small" onClick={() => toggleExpanded(d)}>
-                  Atendentes{d.attendantIds.length > 0 ? ` (${d.attendantIds.length})` : ""}
-                </button>
                 <button className="btn small" onClick={() => saveDepartment(d)}>Salvar</button>
                 <button className="btn small danger" onClick={() => removeDepartment(d.id)}>Remover</button>
               </div>
-              {expandedDeptId === d.id && (
-                <div style={{ gridColumn: "1 / -1", padding: "8px 0 4px", borderTop: "1px solid var(--line)" }}>
-                  <div className="hint" style={{ marginBottom: 6 }}>
-                    Vazio = considera todos os atendentes do setor. Selecione para restringir o relatório a atendentes específicos.
-                    {d.knownAttendants.length === 0 && " Nenhum atendente conhecido ainda — clique em \"Sincronizar atendentes\" abaixo."}
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                    {d.knownAttendants.map((a) => (
-                      <label key={a.id} className="checkbox-field">
-                        <input type="checkbox" checked={d.attendantIds.includes(a.id)} onChange={() => toggleAttendant(i, a.id)} />
-                        {a.name}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           ))}
           {drafts.length === 0 && <div className="hint">Nenhum setor cadastrado ainda.</div>}
         </div>
+        </div>
+        <div className="hint">
+          A escolha de quais atendentes acompanhar fica no filtro "Atendente" da tela principal — é pessoal, salva só no
+          seu navegador e não afeta o que os outros veem. Aqui embaixo você só atualiza a lista de atendentes conhecidos de cada setor.
         </div>
 
         <div className="settings-row">

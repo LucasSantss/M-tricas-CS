@@ -10,6 +10,8 @@ export async function GET(req: NextRequest) {
   try {
     const mondayDate = req.nextUrl.searchParams.get("weekStart");
     const departmentIdsParam = req.nextUrl.searchParams.get("departmentIds"); // opcional, csv
+    const attendantIdsParam = req.nextUrl.searchParams.get("attendantIds"); // opcional, csv — filtro pessoal (não salvo no banco)
+    const personalAttendantIds = attendantIdsParam ? attendantIdsParam.split(",").filter(Boolean) : null;
     if (!mondayDate) {
       return NextResponse.json({ error: "weekStart (YYYY-MM-DD, uma segunda-feira) é obrigatório" }, { status: 400 });
     }
@@ -36,10 +38,12 @@ export async function GET(req: NextRequest) {
     // setor ativo, para as duas semanas em paralelo.
     const perDepartment = await Promise.all(
       departments.map(async (dept) => {
-        // Se o setor tem atendentes específicos selecionados, filtra direto na
-        // API Suri (aceita um único attendantId ou uma lista, como no Postman).
+        // Filtro pessoal de atendentes (query string, nunca salvo no banco) tem
+        // prioridade; cada pessoa pode escolher os seus sem afetar os demais.
+        // Sem filtro pessoal, cai no filtro de atendentes configurado no setor (se houver).
+        const effectiveAttendantIds = personalAttendantIds ?? dept.attendantIds;
         const attendantId =
-          dept.attendantIds.length === 0 ? undefined : dept.attendantIds.length === 1 ? dept.attendantIds[0] : dept.attendantIds;
+          effectiveAttendantIds.length === 0 ? undefined : effectiveAttendantIds.length === 1 ? effectiveAttendantIds[0] : effectiveAttendantIds;
         const [current, previous] = await Promise.all([
           fetchAttendances(settings.chatbotUrl!, settings.bearerToken!, {
             dateFrom: currentWeek.mondayDate,
