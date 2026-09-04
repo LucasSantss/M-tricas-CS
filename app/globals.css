@@ -242,6 +242,7 @@ h1{ font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4
   display: flex;
   align-items: start;
   margin-bottom: 24px;
+  gap: 1vw;
 }
 .dept-callouts{ display:flex; flex-direction:column; gap: 10px; padding-top: 2px; }
 .dept{ border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); width: 80vh; }
