@@ -29,8 +29,9 @@ export type FetchAttendancesOptions = {
 
 /**
  * Busca atendimentos no período [dateFrom, dateTo] (strings "YYYY-MM-DD").
- * A API filtra por dia inteiro; o corte fino (ex: sábado até 14h) é feito
- * depois, em lib/metrics.ts, usando os timestamps reais de cada atendimento.
+ * A API filtra por dia inteiro; o corte fino da janela (segunda a sábado)
+ * é feito depois, em lib/metrics.ts, usando os timestamps reais de cada
+ * atendimento.
  */
 export async function fetchAttendances(
   chatbotUrl: string,

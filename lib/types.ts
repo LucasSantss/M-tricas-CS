@@ -16,9 +16,10 @@ export type DepartmentDto = {
   goalTmrSeconds: number;
   goalCsat: number;
   attendantIds: string[];
+  knownAttendants: { id: string; name: string }[];
 };
 
-export type WeekDto = { mondayDate: string; label: string; start: string; end: string };
+export type WeekDto = { mondayDate: string; saturdayDate: string; label: string; start: string; end: string };
 
 export type SuriDepartmentDto = { id: string; name: string };
 export type SuriAttendantDto = { id: string; name: string; email: string | null };

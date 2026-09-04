@@ -6,10 +6,6 @@ import { buildReport } from "@/lib/metrics";
 
 export const runtime = "nodejs";
 
-function toApiDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
 export async function GET(req: NextRequest) {
   try {
     const mondayDate = req.nextUrl.searchParams.get("weekStart");
@@ -43,14 +39,14 @@ export async function GET(req: NextRequest) {
         const [current, previous] = await Promise.all([
           fetchAttendances(settings.chatbotUrl!, settings.bearerToken!, {
             dateFrom: currentWeek.mondayDate,
-            dateTo: toApiDate(currentWeek.end),
+            dateTo: currentWeek.saturdayDate,
             departmentId: dept.departmentId,
             getCurrent: settings.getCurrent,
             useBusinessHours: settings.useBusinessHours,
           }),
           fetchAttendances(settings.chatbotUrl!, settings.bearerToken!, {
             dateFrom: prevWeek.mondayDate,
-            dateTo: toApiDate(prevWeek.end),
+            dateTo: prevWeek.saturdayDate,
             departmentId: dept.departmentId,
             getCurrent: settings.getCurrent,
             useBusinessHours: settings.useBusinessHours,

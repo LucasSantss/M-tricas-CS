@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   }
   const weeks = getWeeksForQuarter(year, quarter).map((w) => ({
     mondayDate: w.mondayDate,
+    saturdayDate: w.saturdayDate,
     label: w.label,
     start: w.start.toISOString(),
     end: w.end.toISOString(),

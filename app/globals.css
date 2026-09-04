@@ -35,7 +35,7 @@ body{
   align-items:center;
   justify-content: space-between;
   width: 100vw;
-  padding: 1vw 2vw;
+  padding: 0.1vh 2vw;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
 }

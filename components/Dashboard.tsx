@@ -19,6 +19,12 @@ function currentQuarter(month: number): 1 | 2 | 3 | 4 {
   return (Math.floor(month / 3) + 1) as 1 | 2 | 3 | 4;
 }
 
+/** "YYYY-MM-DD" -> "DD/MM/YYYY", sem passar por Date/fuso do navegador. */
+function formatBr(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 export default function Dashboard() {
   const now = useMemo(() => new Date(), []);
   const [year, setYear] = useState(now.getFullYear());
@@ -138,11 +144,11 @@ export default function Dashboard() {
           </select>
         </div>
         <div className="field grow">
-          <label>Semana (seg 00h → sáb 14h)</label>
+          <label>Semana (seg–sáb)</label>
           <select value={weekStart} onChange={(e) => setWeekStart(e.target.value)}>
             {weeks.map((w) => (
               <option key={w.mondayDate} value={w.mondayDate}>
-                {w.label} · {new Date(w.start).toLocaleDateString("pt-BR")} a {new Date(w.end).toLocaleDateString("pt-BR")}
+                {w.label} · {formatBr(w.mondayDate)} a {formatBr(w.saturdayDate)}
               </option>
             ))}
           </select>

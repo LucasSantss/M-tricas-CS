@@ -1,6 +1,6 @@
 // Todos os cálculos de "semana" seguem o horário de Brasília (UTC-3, fixo,
 // sem horário de verão desde 2019) e a janela operacional pedida:
-// segunda 00:00 até sábado 14:00.
+// segunda 00:00 até o fim do dia de sábado (segunda a sábado, dias cheios).
 
 const SP_OFFSET_MS = 3 * 60 * 60 * 1000;
 
@@ -15,10 +15,12 @@ function toUtc(localShifted: Date): Date {
 export type WeekRange = {
   /** Data (YYYY-MM-DD) da segunda-feira, em horário de Brasília */
   mondayDate: string;
+  /** Data (YYYY-MM-DD) do sábado, em horário de Brasília — usar como dateTo em chamadas à API */
+  saturdayDate: string;
   label: string;
   /** Início real da janela (segunda 00:00 BRT), em UTC */
   start: Date;
-  /** Fim real da janela (sábado 14:00 BRT), em UTC */
+  /** Fim real da janela (domingo 00:00 BRT, exclusivo — ou seja, sábado inteiro), em UTC */
   end: Date;
 };
 
@@ -52,12 +54,15 @@ function dateStr(localDate: Date): string {
 export function weekRangeForMonday(mondayDateStr: string): WeekRange {
   const [y, m, d] = mondayDateStr.split("-").map(Number);
   const mondayLocal = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
-  const saturdayLocal = new Date(Date.UTC(y, m - 1, d + 5, 14, 0, 0));
+  const saturdayLocal = new Date(Date.UTC(y, m - 1, d + 5, 0, 0, 0));
+  // fim exclusivo = domingo 00:00 BRT, ou seja, sábado inteiro entra na janela
+  const sundayLocal = new Date(Date.UTC(y, m - 1, d + 6, 0, 0, 0));
   return {
     mondayDate: dateStr(mondayLocal),
+    saturdayDate: dateStr(saturdayLocal),
     label: `Semana ${isoWeekNumber(mondayLocal)}`,
     start: toUtc(mondayLocal),
-    end: toUtc(saturdayLocal),
+    end: toUtc(sundayLocal),
   };
 }
 

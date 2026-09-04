@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ConfigResponse, DepartmentDto, SuriAttendantDto } from "@/lib/types";
+import type { ConfigResponse, DepartmentDto } from "@/lib/types";
 
 type Props = {
   config: ConfigResponse | null;
@@ -29,10 +29,9 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
   const [error, setError] = useState<string | null>(null);
 
   const [expandedDeptId, setExpandedDeptId] = useState<number | null>(null);
-  const [attendantsByDept, setAttendantsByDept] = useState<Record<string, SuriAttendantDto[]>>({});
-  const [loadingAttendants, setLoadingAttendants] = useState(false);
-
   const [seeding, setSeeding] = useState(false);
+  const [syncingAttendants, setSyncingAttendants] = useState(false);
+  const [syncSummary, setSyncSummary] = useState<{ name: string; attendantCount: number }[] | null>(null);
 
   useEffect(() => setChatbotUrl(config?.chatbotUrl ?? ""), [config?.chatbotUrl]);
   useEffect(() => setUseBusinessHours(config?.useBusinessHours ?? false), [config?.useBusinessHours]);
@@ -90,29 +89,29 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
     }
   }
 
-  async function loadAttendants(departmentId: string) {
-    if (attendantsByDept[departmentId]) return;
-    setLoadingAttendants(true);
+  function toggleExpanded(d: DraftDept) {
+    setExpandedDeptId((cur) => (cur === d.id ? null : d.id));
+  }
+
+  async function syncAttendants() {
+    setSyncingAttendants(true);
     setError(null);
+    setSyncSummary(null);
     try {
-      const res = await fetch(`/api/suri/attendants?departmentId=${encodeURIComponent(departmentId)}`);
+      const res = await fetch("/api/departments/sync-attendants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: 60 }),
+      });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Falha ao buscar atendentes");
-      setAttendantsByDept((m) => ({ ...m, [departmentId]: json.attendants }));
+      if (!res.ok) throw new Error(json.error ?? "Falha ao sincronizar atendentes");
+      setSyncSummary(json.results);
+      onDepartmentsChanged();
     } catch (e: any) {
       setError(e.message);
     } finally {
-      setLoadingAttendants(false);
+      setSyncingAttendants(false);
     }
-  }
-
-  function toggleExpanded(d: DraftDept) {
-    if (expandedDeptId === d.id) {
-      setExpandedDeptId(null);
-      return;
-    }
-    setExpandedDeptId(d.id);
-    loadAttendants(d.departmentId);
   }
 
   function toggleAttendant(i: number, attendantId: string) {
@@ -145,6 +144,8 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Falha ao carregar setores padrão");
       onDepartmentsChanged();
+      // já aproveita e busca os atendentes de cada setor no histórico de atendimentos
+      await syncAttendants();
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -175,6 +176,8 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
     });
     setDiscovered((arr) => arr.filter((x) => x.departmentId !== d.departmentId));
     onDepartmentsChanged();
+    // busca os atendentes desse setor recém-adicionado (e dos demais) no histórico
+    await syncAttendants();
   }
 
   const configured = Boolean(config?.chatbotUrl && config?.hasToken);
@@ -252,22 +255,16 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
                 <div style={{ gridColumn: "1 / -1", padding: "8px 0 4px", borderTop: "1px solid var(--line)" }}>
                   <div className="hint" style={{ marginBottom: 6 }}>
                     Vazio = considera todos os atendentes do setor. Selecione para restringir o relatório a atendentes específicos.
+                    {d.knownAttendants.length === 0 && " Nenhum atendente conhecido ainda — clique em \"Sincronizar atendentes\" abaixo."}
                   </div>
-                  {loadingAttendants && !attendantsByDept[d.departmentId] ? (
-                    <div className="hint">Buscando atendentes…</div>
-                  ) : (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                      {(attendantsByDept[d.departmentId] ?? []).map((a) => (
-                        <label key={a.id} className="checkbox-field">
-                          <input type="checkbox" checked={d.attendantIds.includes(a.id)} onChange={() => toggleAttendant(i, a.id)} />
-                          {a.name}
-                        </label>
-                      ))}
-                      {(attendantsByDept[d.departmentId] ?? []).length === 0 && !loadingAttendants && (
-                        <span className="hint">Nenhum atendente encontrado.</span>
-                      )}
-                    </div>
-                  )}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {d.knownAttendants.map((a) => (
+                      <label key={a.id} className="checkbox-field">
+                        <input type="checkbox" checked={d.attendantIds.includes(a.id)} onChange={() => toggleAttendant(i, a.id)} />
+                        {a.name}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -282,7 +279,15 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
           <button className="btn" disabled={discovering} onClick={discoverDepartments}>
             {discovering ? "Buscando…" : "Carregar setores da API"}
           </button>
+          <button className="btn" disabled={syncingAttendants} onClick={syncAttendants}>
+            {syncingAttendants ? "Sincronizando…" : "Sincronizar atendentes (últimos 60 dias)"}
+          </button>
         </div>
+        {syncSummary && (
+          <div className="hint">
+            {syncSummary.map((r) => `${r.name}: ${r.attendantCount} atendente(s)`).join(" · ")}
+          </div>
+        )}
 
         {discovered.length > 0 && (
           <div>
