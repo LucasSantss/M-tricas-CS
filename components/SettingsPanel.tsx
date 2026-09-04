@@ -26,6 +26,7 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
   const [discovered, setDiscovered] = useState<{ departmentId: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const [savedFlashId, setSavedFlashId] = useState<number | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [syncingAttendants, setSyncingAttendants] = useState(false);
   const [syncSummary, setSyncSummary] = useState<{ name: string; attendantCount: number }[] | null>(null);
@@ -74,6 +75,8 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Falha ao salvar setor");
       onDepartmentsChanged();
+      setSavedFlashId(d.id);
+      setTimeout(() => setSavedFlashId((cur) => (cur === d.id ? null : cur)), 1500);
     } catch (e: any) {
       setError(e.message);
     }
@@ -214,7 +217,11 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
                 <input
                   type="checkbox"
                   checked={d.active}
-                  onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, active: e.target.checked } : x)))}
+                  onChange={(e) => {
+                    const active = e.target.checked;
+                    setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, active } : x)));
+                    saveDepartment({ ...d, active });
+                  }}
                 />
                 <span className="switch-track" />
                 <span className="switch-thumb" />
@@ -223,13 +230,41 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
                 type="text"
                 value={d.name}
                 onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                onBlur={() => saveDepartment(d)}
                 title={`departmentId: ${d.departmentId}`}
               />
-              <input type="number" step="0.5" value={d.goalTmeMin} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalTmeMin: Number(e.target.value) } : x)))} />
-              <input type="number" step="0.5" value={d.goalTmaMin} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalTmaMin: Number(e.target.value) } : x)))} />
-              <input type="number" step="0.5" value={d.goalTmrMin} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalTmrMin: Number(e.target.value) } : x)))} />
-              <input type="number" step="0.1" min="0" max="5" value={d.goalCsat} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalCsat: Number(e.target.value) } : x)))} />
-              <div style={{ display: "flex", gap: 6 }}>
+              <input
+                type="number"
+                step="0.5"
+                value={d.goalTmeMin}
+                onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalTmeMin: Number(e.target.value) } : x)))}
+                onBlur={() => saveDepartment(d)}
+              />
+              <input
+                type="number"
+                step="0.5"
+                value={d.goalTmaMin}
+                onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalTmaMin: Number(e.target.value) } : x)))}
+                onBlur={() => saveDepartment(d)}
+              />
+              <input
+                type="number"
+                step="0.5"
+                value={d.goalTmrMin}
+                onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalTmrMin: Number(e.target.value) } : x)))}
+                onBlur={() => saveDepartment(d)}
+              />
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="5"
+                value={d.goalCsat}
+                onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalCsat: Number(e.target.value) } : x)))}
+                onBlur={() => saveDepartment(d)}
+              />
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {savedFlashId === d.id && <span className="hint" style={{ color: "var(--good)" }}>Salvo ✓</span>}
                 <button className="btn small" onClick={() => saveDepartment(d)}>Salvar</button>
                 <button className="btn small danger" onClick={() => removeDepartment(d.id)}>Remover</button>
               </div>
