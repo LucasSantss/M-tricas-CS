@@ -174,7 +174,6 @@ export default function Dashboard() {
 
       <div className="wrap">
         <header>
-          <div className="greeting">Time, bom dia!</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <h1>Termômetro Operacional</h1>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
