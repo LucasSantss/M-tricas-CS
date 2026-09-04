@@ -1,0 +1,302 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { ConfigResponse, DepartmentDto, SuriAttendantDto } from "@/lib/types";
+
+type Props = {
+  config: ConfigResponse | null;
+  departments: DepartmentDto[];
+  onConfigSaved: () => void;
+  onDepartmentsChanged: () => void;
+};
+
+type DraftDept = DepartmentDto & { goalTmeMin: number; goalTmaMin: number; goalTmrMin: number };
+
+function toDraft(d: DepartmentDto): DraftDept {
+  return { ...d, goalTmeMin: d.goalTmeSeconds / 60, goalTmaMin: d.goalTmaSeconds / 60, goalTmrMin: d.goalTmrSeconds / 60 };
+}
+
+export default function SettingsPanel({ config, departments, onConfigSaved, onDepartmentsChanged }: Props) {
+  const [chatbotUrl, setChatbotUrl] = useState(config?.chatbotUrl ?? "");
+  const [bearerToken, setBearerToken] = useState("");
+  const [useBusinessHours, setUseBusinessHours] = useState(config?.useBusinessHours ?? false);
+  const [getCurrent, setGetCurrent] = useState(config?.getCurrent ?? false);
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  const [drafts, setDrafts] = useState<DraftDept[]>(departments.map(toDraft));
+  const [discovering, setDiscovering] = useState(false);
+  const [discovered, setDiscovered] = useState<{ departmentId: string; name: string }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const [expandedDeptId, setExpandedDeptId] = useState<number | null>(null);
+  const [attendantsByDept, setAttendantsByDept] = useState<Record<string, SuriAttendantDto[]>>({});
+  const [loadingAttendants, setLoadingAttendants] = useState(false);
+
+  const [seeding, setSeeding] = useState(false);
+
+  useEffect(() => setChatbotUrl(config?.chatbotUrl ?? ""), [config?.chatbotUrl]);
+  useEffect(() => setUseBusinessHours(config?.useBusinessHours ?? false), [config?.useBusinessHours]);
+  useEffect(() => setGetCurrent(config?.getCurrent ?? false), [config?.getCurrent]);
+  useEffect(() => setDrafts(departments.map(toDraft)), [departments]);
+
+  async function saveConfig() {
+    setSavingConfig(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatbotUrl,
+          bearerToken: bearerToken.trim() === "" ? undefined : bearerToken.trim(),
+          useBusinessHours,
+          getCurrent,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Falha ao salvar");
+      setBearerToken("");
+      onConfigSaved();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSavingConfig(false);
+    }
+  }
+
+  async function saveDepartment(d: DraftDept) {
+    setError(null);
+    try {
+      const res = await fetch("/api/departments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          departmentId: d.departmentId,
+          name: d.name,
+          active: d.active,
+          sortOrder: d.sortOrder,
+          goalTmeSeconds: Math.round(d.goalTmeMin * 60),
+          goalTmaSeconds: Math.round(d.goalTmaMin * 60),
+          goalTmrSeconds: Math.round(d.goalTmrMin * 60),
+          goalCsat: d.goalCsat,
+          attendantIds: d.attendantIds,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Falha ao salvar setor");
+      onDepartmentsChanged();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+
+  async function loadAttendants(departmentId: string) {
+    if (attendantsByDept[departmentId]) return;
+    setLoadingAttendants(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/suri/attendants?departmentId=${encodeURIComponent(departmentId)}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Falha ao buscar atendentes");
+      setAttendantsByDept((m) => ({ ...m, [departmentId]: json.attendants }));
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoadingAttendants(false);
+    }
+  }
+
+  function toggleExpanded(d: DraftDept) {
+    if (expandedDeptId === d.id) {
+      setExpandedDeptId(null);
+      return;
+    }
+    setExpandedDeptId(d.id);
+    loadAttendants(d.departmentId);
+  }
+
+  function toggleAttendant(i: number, attendantId: string) {
+    setDrafts((arr) =>
+      arr.map((x, j) => {
+        if (j !== i) return x;
+        const has = x.attendantIds.includes(attendantId);
+        return { ...x, attendantIds: has ? x.attendantIds.filter((id) => id !== attendantId) : [...x.attendantIds, attendantId] };
+      })
+    );
+  }
+
+  async function removeDepartment(id: number) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/departments?id=${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Falha ao remover setor");
+      onDepartmentsChanged();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+
+  async function seedKnownDepartments() {
+    setSeeding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/departments/seed", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Falha ao carregar setores padrão");
+      onDepartmentsChanged();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSeeding(false);
+    }
+  }
+
+  async function discoverDepartments() {
+    setDiscovering(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/departments/discover", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Falha ao detectar setores");
+      setDiscovered(json.departments);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
+  async function addDiscovered(d: { departmentId: string; name: string }) {
+    await fetch("/api/departments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ departmentId: d.departmentId, name: d.name, sortOrder: drafts.length }),
+    });
+    setDiscovered((arr) => arr.filter((x) => x.departmentId !== d.departmentId));
+    onDepartmentsChanged();
+  }
+
+  const configured = Boolean(config?.chatbotUrl && config?.hasToken);
+
+  return (
+    <div className="settings-body">
+      {error && <div className="error-box">{error}</div>}
+
+      <section className="settings-section">
+        <div className="settings-section-title">Conexão</div>
+        <div className="settings-row">
+          <div className="field grow">
+            <label>URL do chatbot</label>
+            <input type="text" value={chatbotUrl} onChange={(e) => setChatbotUrl(e.target.value)} placeholder="https://sua-instancia.azurewebsites.net" />
+          </div>
+          <div className="field grow">
+            <label>Bearer token {config?.hasToken && <span className="hint">(configurado)</span>}</label>
+            <input type="password" value={bearerToken} onChange={(e) => setBearerToken(e.target.value)} placeholder={config?.hasToken ? "•••••••• (deixe em branco pra manter)" : "cole o token aqui"} />
+          </div>
+        </div>
+        <div className="settings-row">
+          <label className="checkbox-field">
+            <input type="checkbox" checked={useBusinessHours} onChange={(e) => setUseBusinessHours(e.target.checked)} />
+            Considerar apenas horário comercial
+          </label>
+          <label className="checkbox-field">
+            <input type="checkbox" checked={getCurrent} onChange={(e) => setGetCurrent(e.target.checked)} />
+            Incluir atendimentos em andamento
+          </label>
+          <button className="btn primary" disabled={savingConfig} onClick={saveConfig}>
+            {savingConfig ? "Salvando…" : "Salvar acesso"}
+          </button>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section-title">
+          Setores acompanhados
+          <span className="hint" style={{ marginLeft: 8, fontWeight: 400 }}>
+            {departments.filter((d) => d.active).length} de {departments.length} ativos
+          </span>
+        </div>
+
+        <div className="dept-config-head">
+          <span></span>
+          <span>Setor</span>
+          <span>TME (min)</span>
+          <span>TMA (min)</span>
+          <span>TMR (min)</span>
+          <span>CSAT</span>
+          <span></span>
+        </div>
+        <div className="dept-list">
+          {drafts.map((d, i) => (
+            <div className="dept-config-row" key={d.id}>
+              <input type="checkbox" checked={d.active} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, active: e.target.checked } : x)))} />
+              <input
+                type="text"
+                value={d.name}
+                onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                title={`departmentId: ${d.departmentId}`}
+              />
+              <input type="number" step="0.5" value={d.goalTmeMin} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalTmeMin: Number(e.target.value) } : x)))} />
+              <input type="number" step="0.5" value={d.goalTmaMin} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalTmaMin: Number(e.target.value) } : x)))} />
+              <input type="number" step="0.5" value={d.goalTmrMin} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalTmrMin: Number(e.target.value) } : x)))} />
+              <input type="number" step="0.1" min="0" max="5" value={d.goalCsat} onChange={(e) => setDrafts((arr) => arr.map((x, j) => (j === i ? { ...x, goalCsat: Number(e.target.value) } : x)))} />
+              <div style={{ display: "flex", gap: 6 }}>
+                <button className="btn small" onClick={() => toggleExpanded(d)}>
+                  Atendentes{d.attendantIds.length > 0 ? ` (${d.attendantIds.length})` : ""}
+                </button>
+                <button className="btn small" onClick={() => saveDepartment(d)}>Salvar</button>
+                <button className="btn small danger" onClick={() => removeDepartment(d.id)}>Remover</button>
+              </div>
+              {expandedDeptId === d.id && (
+                <div style={{ gridColumn: "1 / -1", padding: "8px 0 4px", borderTop: "1px solid var(--line)" }}>
+                  <div className="hint" style={{ marginBottom: 6 }}>
+                    Vazio = considera todos os atendentes do setor. Selecione para restringir o relatório a atendentes específicos.
+                  </div>
+                  {loadingAttendants && !attendantsByDept[d.departmentId] ? (
+                    <div className="hint">Buscando atendentes…</div>
+                  ) : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                      {(attendantsByDept[d.departmentId] ?? []).map((a) => (
+                        <label key={a.id} className="checkbox-field">
+                          <input type="checkbox" checked={d.attendantIds.includes(a.id)} onChange={() => toggleAttendant(i, a.id)} />
+                          {a.name}
+                        </label>
+                      ))}
+                      {(attendantsByDept[d.departmentId] ?? []).length === 0 && !loadingAttendants && (
+                        <span className="hint">Nenhum atendente encontrado.</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+          {drafts.length === 0 && <div className="hint">Nenhum setor cadastrado ainda.</div>}
+        </div>
+
+        <div className="settings-row">
+          <button className="btn" disabled={seeding} onClick={seedKnownDepartments}>
+            {seeding ? "Carregando…" : "Carregar os 6 setores acompanhados"}
+          </button>
+          <button className="btn" disabled={discovering} onClick={discoverDepartments}>
+            {discovering ? "Buscando…" : "Carregar setores da API"}
+          </button>
+        </div>
+
+        {discovered.length > 0 && (
+          <div>
+            <div className="hint" style={{ marginBottom: 6 }}>Setores encontrados na API e ainda não cadastrados:</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {discovered.map((d) => (
+                <button key={d.departmentId} className="btn small" onClick={() => addDiscovered(d)}>
+                  + {d.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
