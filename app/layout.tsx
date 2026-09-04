@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Termômetro Operacional",
-  description: "Comparativo semanal de TME, TMA, TMR, CSAT e volume por setor",
+  description: "Comparativo semanal de TME, TMA, TMR, CSAT e volume por departamento",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
