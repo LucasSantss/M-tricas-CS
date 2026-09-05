@@ -184,12 +184,13 @@ export default function SettingsPanel({ config, departments, onConfigSaved, onDe
             <span className="dept-toggle-check" />
             Incluir atendimentos em andamento
           </button>
-        </div>
-        <div className="settings-row">
+          <div className="settings-row">
           <button className="btn primary" disabled={savingConfig} onClick={saveConfig}>
             {savingConfig ? "Salvando…" : "Salvar opções"}
           </button>
         </div>
+        </div>
+        
       </section>
 
       <section className="settings-section">

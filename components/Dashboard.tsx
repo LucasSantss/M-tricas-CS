@@ -10,28 +10,7 @@ import SettingsPanel from "./SettingsPanel";
 import SettingsModal from "./SettingsModal";
 import TopBar from "./TopBar";
 import DepartmentCard from "./DepartmentCard";
-import AttendantFilter from "./AttendantFilter";
-
-const MONTHS = [
-  { value: 1, label: "Janeiro" },
-  { value: 2, label: "Fevereiro" },
-  { value: 3, label: "Março" },
-  { value: 4, label: "Abril" },
-  { value: 5, label: "Maio" },
-  { value: 6, label: "Junho" },
-  { value: 7, label: "Julho" },
-  { value: 8, label: "Agosto" },
-  { value: 9, label: "Setembro" },
-  { value: 10, label: "Outubro" },
-  { value: 11, label: "Novembro" },
-  { value: 12, label: "Dezembro" },
-];
-
-/** "YYYY-MM-DD" -> "DD/MM/YYYY", sem passar por Date/fuso do navegador. */
-function formatBr(isoDate: string): string {
-  const [y, m, d] = isoDate.split("-");
-  return `${d}/${m}/${y}`;
-}
+import FilterBar from "./FilterBar";
 
 export default function Dashboard() {
   const now = useMemo(() => new Date(), []);
@@ -180,14 +159,11 @@ export default function Dashboard() {
 
       <div className="wrap">
         <header>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div className="page-header-row">
             <h1>Termômetro Operacional</h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              
-              <button className="btn small" disabled={loading || refreshing} onClick={() => loadReport(true)}>
-                {refreshing ? "Recarregando…" : "🔄 Recarregar"}
-              </button>
-            </div>
+            <button className="btn small" disabled={loading || refreshing} onClick={() => loadReport(true)}>
+              {refreshing ? "Recarregando…" : "🔄 Recarregar"}
+            </button>
           </div>
           {report && (
             <div className="subtitle">
@@ -196,82 +172,22 @@ export default function Dashboard() {
           )}
         </header>
 
-        <div className="settings-row" style={{ marginBottom: 24 }}>
-        <div className="field">
-          <label>Ano</label>
-          <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 90 }} />
-        </div>
-        <div className="field">
-          <label>Mês</label>
-          <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
-            {MONTHS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label>Período</label>
-          <div className="view-mode-toggle">
-            <button type="button" className={viewMode === "week" ? "on" : ""} onClick={() => setViewMode("week")}>
-              Semana
-            </button>
-            <button type="button" className={viewMode === "month" ? "on" : ""} onClick={() => setViewMode("month")}>
-              Mês inteiro
-            </button>
-          </div>
-        </div>
-        {viewMode === "week" && (
-          <div className="field grow">
-            <label>Semana (seg–sáb)</label>
-            <select value={weekStart} onChange={(e) => setWeekStart(e.target.value)}>
-              {weeks.map((w) => (
-                <option key={w.mondayDate} value={w.mondayDate}>
-                  {w.label} · {formatBr(w.mondayDate)} a {formatBr(w.saturdayDate)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        {activeDepartments.length > 0 && (
-          <div className="field">
-            <label>Atendente</label>
-            <AttendantFilter departments={activeDepartments} selected={selectedAttendantIds} onChange={updateAttendantFilter} />
-          </div>
-        )}
-        {activeDepartments.length > 0 && (
-          <div className="field grow">
-            <label>Setores no relatório</label>
-            <div className="dept-toggle-list">
-              {activeDepartments.map((d) => {
-                const isOn = !selectedDeptIds || selectedDeptIds.has(d.departmentId);
-                return (
-                  <button
-                    key={d.departmentId}
-                    type="button"
-                    className={`dept-toggle ${isOn ? "on" : "off"}`}
-                    aria-pressed={isOn}
-                    onClick={() =>
-                      setSelectedDeptIds((prev) => {
-                        const all = new Set(activeDepartments.map((x) => x.departmentId));
-                        const cur = prev ?? all;
-                        const next = new Set(cur);
-                        if (next.has(d.departmentId)) next.delete(d.departmentId);
-                        else next.add(d.departmentId);
-                        return next.size === all.size ? null : next;
-                      })
-                    }
-                  >
-                    <span className="dept-toggle-check" />
-                    {d.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+        <FilterBar
+          year={year}
+          onYearChange={setYear}
+          month={month}
+          onMonthChange={setMonth}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          weeks={weeks}
+          weekStart={weekStart}
+          onWeekStartChange={setWeekStart}
+          activeDepartments={activeDepartments}
+          selectedAttendantIds={selectedAttendantIds}
+          onAttendantFilterChange={updateAttendantFilter}
+          selectedDeptIds={selectedDeptIds}
+          onSelectedDeptIdsChange={setSelectedDeptIds}
+        />
 
         {!configured && (
           <div className="error-box">
