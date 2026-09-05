@@ -212,33 +212,61 @@ export function buildReport(
     for (const m of metrics) {
       if (m.deltaPct == null) continue;
       const abs = Math.abs(m.deltaPct);
-      if (m.goalMet && m.isImprovement && abs >= 10) {
-        highlights.push({
-          level: "good",
-          departmentId: dept.departmentId,
-          text: `${m.label} melhorou ${abs.toFixed(1).replace(".", ",")}% (${m.from} → ${m.to}) e segue dentro da meta (${m.goalLabel}).`,
-        });
-      } else if (m.goalMet && m.prevGoalMet === false) {
-        highlights.push({
-          level: "good",
-          departmentId: dept.departmentId,
-          text: `${m.label} voltou a atingir a meta (${m.goalLabel}) após a semana anterior fora do padrão.`,
-        });
+      const pctStr = abs.toFixed(1).replace(".", ",");
+      // verbo que descreve a direção real do número (independe de ser bom ou ruim)
+      const verb = m.key === "csat" ? (m.deltaPct > 0 ? "subiu" : "caiu") : m.deltaPct > 0 ? "aumentou" : "diminuiu";
+
+      if (m.goalMet === true) {
+        if (m.prevGoalMet === false) {
+          highlights.push({
+            level: "good",
+            departmentId: dept.departmentId,
+            text: `${m.label} voltou a atingir a meta (${m.goalLabel}) após a semana anterior fora do padrão, agora em ${m.to}.`,
+          });
+        } else if (m.isImprovement && abs >= 10) {
+          highlights.push({
+            level: "good",
+            departmentId: dept.departmentId,
+            text: `${m.label} melhorou ${pctStr}% (${m.from} → ${m.to}) e segue dentro da meta (${m.goalLabel}).`,
+          });
+        } else if (!m.isImprovement && abs >= 15) {
+          // dentro da meta, mas a tendência é ruim — vale acompanhar antes que estoure a meta
+          attention.push({
+            level: "warn",
+            departmentId: dept.departmentId,
+            text: `${m.label} ${verb} ${pctStr}% (${m.from} → ${m.to}) mas ainda permanece dentro da meta (${m.goalLabel}) ⚠️`,
+          });
+        }
+      } else if (m.goalMet === false) {
+        if (m.prevGoalMet === true) {
+          // acabou de estourar a meta nesta semana — merece destaque diferente de "segue fora"
+          attention.push({
+            level: "bad",
+            departmentId: dept.departmentId,
+            text: `${m.label} saiu da meta (${m.goalLabel}) nesta semana: ${verb} ${pctStr}% e foi para ${m.to}.`,
+          });
+        } else if (!m.isImprovement && abs >= 20) {
+          attention.push({
+            level: "bad",
+            departmentId: dept.departmentId,
+            text: `${m.label} piorou ${pctStr}% (${m.from} → ${m.to}), seguindo fora da meta (${m.goalLabel}).`,
+          });
+        } else if (m.isImprovement && abs >= 10) {
+          // ainda fora da meta, mas caminhando na direção certa
+          attention.push({
+            level: "warn",
+            departmentId: dept.departmentId,
+            text: `${m.label} ${verb} ${pctStr}% e melhorou (${m.from} → ${m.to}), mas ainda está fora da meta (${m.goalLabel}).`,
+          });
+        } else {
+          attention.push({
+            level: "warn",
+            departmentId: dept.departmentId,
+            text: `${m.label} segue fora da meta (${m.goalLabel}), atual ${m.to}.`,
+          });
+        }
       }
 
-      if (m.goalMet === false && !m.isImprovement && abs >= 20) {
-        attention.push({
-          level: "bad",
-          departmentId: dept.departmentId,
-          text: `${m.label} piorou ${abs.toFixed(1).replace(".", ",")}% (${m.from} → ${m.to}), ficando fora da meta (${m.goalLabel}).`,
-        });
-      } else if (m.goalMet === false) {
-        attention.push({
-          level: "warn",
-          departmentId: dept.departmentId,
-          text: `${m.label} segue fora da meta (${m.goalLabel}), atual ${m.to}.`,
-        });
-      }
       if (m.sampleTooSmall) {
         attention.push({
           level: "warn",
