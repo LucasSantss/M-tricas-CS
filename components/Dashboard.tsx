@@ -39,6 +39,7 @@ export default function Dashboard() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [weeks, setWeeks] = useState<WeekDto[]>([]);
   const [weekStart, setWeekStart] = useState<string>("");
+  const [viewMode, setViewMode] = useState<"week" | "month">("week");
 
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [departments, setDepartments] = useState<DepartmentDto[]>([]);
@@ -58,6 +59,7 @@ export default function Dashboard() {
     if (prefs.year) setYear(prefs.year);
     if (prefs.month) setMonth(prefs.month);
     if (prefs.weekStart) setWeekStart(prefs.weekStart);
+    if (prefs.viewMode) setViewMode(prefs.viewMode);
     if (prefs.deptIds !== undefined) setSelectedDeptIds(prefs.deptIds ? new Set(prefs.deptIds) : null);
     setPrefsLoaded(true);
   }, []);
@@ -67,9 +69,10 @@ export default function Dashboard() {
       year,
       month,
       weekStart,
+      viewMode,
       deptIds: selectedDeptIds ? Array.from(selectedDeptIds) : null,
     });
-  }, [prefsLoaded, year, month, weekStart, selectedDeptIds]);
+  }, [prefsLoaded, year, month, weekStart, viewMode, selectedDeptIds]);
 
   const [report, setReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -103,7 +106,7 @@ export default function Dashboard() {
   }, [config, checkedInitialConfig]);
 
   useEffect(() => {
-    if (!prefsLoaded) return; // espera restaurar ano/mês/semana do cache antes de buscar, pra não sobrescrever com o mês atual
+    if (!prefsLoaded || viewMode !== "week") return; // espera restaurar ano/mês/semana do cache antes de buscar, pra não sobrescrever com o mês atual
     (async () => {
       const res = await fetch(`/api/weeks?year=${year}&month=${month}`);
       const json = await res.json();
@@ -114,16 +117,19 @@ export default function Dashboard() {
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
-  }, [year, month, prefsLoaded]);
+  }, [year, month, prefsLoaded, viewMode]);
 
   const loadReport = useCallback(
     async (force = false) => {
-      if (!weekStart || !config?.chatbotUrl || !config?.hasToken) return;
+      if (viewMode === "week" && !weekStart) return;
+      if (!config?.chatbotUrl || !config?.hasToken) return;
       const deptIdsArr = selectedDeptIds ? Array.from(selectedDeptIds) : null;
       const attendantIdsArr = selectedAttendantIds.length > 0 ? selectedAttendantIds : null;
+      const periodKey = viewMode === "month" ? `month:${year}-${String(month).padStart(2, "0")}` : weekStart;
+      const periodParam = viewMode === "month" ? `mode=month&year=${year}&month=${month}` : `weekStart=${weekStart}`;
       setError(null);
 
-      const cached = force ? null : readReportCache(weekStart, deptIdsArr, attendantIdsArr);
+      const cached = force ? null : readReportCache(periodKey, deptIdsArr, attendantIdsArr);
       if (cached) {
         setReport(cached.report);
         setReportSavedAt(cached.savedAt);
@@ -135,11 +141,11 @@ export default function Dashboard() {
       try {
         const idsParam = deptIdsArr && deptIdsArr.length > 0 ? `&departmentIds=${deptIdsArr.join(",")}` : "";
         const attendantsParam = attendantIdsArr ? `&attendantIds=${attendantIdsArr.join(",")}` : "";
-        const res = await fetch(`/api/report?weekStart=${weekStart}${idsParam}${attendantsParam}`);
+        const res = await fetch(`/api/report?${periodParam}${idsParam}${attendantsParam}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? "Falha ao carregar relatório");
         setReport(json);
-        writeReportCache(weekStart, deptIdsArr, attendantIdsArr, json);
+        writeReportCache(periodKey, deptIdsArr, attendantIdsArr, json);
         setReportSavedAt(Date.now());
       } catch (e: any) {
         setError(e.message);
@@ -149,7 +155,7 @@ export default function Dashboard() {
         setRefreshing(false);
       }
     },
-    [weekStart, config, selectedDeptIds, selectedAttendantIds]
+    [viewMode, year, month, weekStart, config, selectedDeptIds, selectedAttendantIds]
   );
 
   useEffect(() => {
@@ -205,16 +211,29 @@ export default function Dashboard() {
             ))}
           </select>
         </div>
-        <div className="field grow">
-          <label>Semana (seg–sáb)</label>
-          <select value={weekStart} onChange={(e) => setWeekStart(e.target.value)}>
-            {weeks.map((w) => (
-              <option key={w.mondayDate} value={w.mondayDate}>
-                {w.label} · {formatBr(w.mondayDate)} a {formatBr(w.saturdayDate)}
-              </option>
-            ))}
-          </select>
+        <div className="field">
+          <label>Período</label>
+          <div className="view-mode-toggle">
+            <button type="button" className={viewMode === "week" ? "on" : ""} onClick={() => setViewMode("week")}>
+              Semana
+            </button>
+            <button type="button" className={viewMode === "month" ? "on" : ""} onClick={() => setViewMode("month")}>
+              Mês inteiro
+            </button>
+          </div>
         </div>
+        {viewMode === "week" && (
+          <div className="field grow">
+            <label>Semana (seg–sáb)</label>
+            <select value={weekStart} onChange={(e) => setWeekStart(e.target.value)}>
+              {weeks.map((w) => (
+                <option key={w.mondayDate} value={w.mondayDate}>
+                  {w.label} · {formatBr(w.mondayDate)} a {formatBr(w.saturdayDate)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {activeDepartments.length > 0 && (
           <div className="field">
             <label>Atendente</label>

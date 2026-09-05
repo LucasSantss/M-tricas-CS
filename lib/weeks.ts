@@ -90,6 +90,32 @@ export function getWeeksForMonth(year: number, month: number): WeekRange[] {
   return weeks;
 }
 
+const MONTH_NAMES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+/** Monta o intervalo do mês inteiro (dia 1 ao último dia), horário de Brasília. */
+export function monthRange(year: number, month: number): WeekRange {
+  const firstLocal = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+  const lastLocal = new Date(Date.UTC(year, month, 0, 0, 0, 0)); // último dia do mês
+  const nextMonthFirstLocal = new Date(Date.UTC(year, month, 1, 0, 0, 0)); // fim exclusivo
+  return {
+    mondayDate: dateStr(firstLocal),
+    saturdayDate: dateStr(lastLocal),
+    label: `${MONTH_NAMES[month - 1]}/${year}`,
+    start: toUtc(firstLocal),
+    end: toUtc(nextMonthFirstLocal),
+  };
+}
+
+/** Mês anterior ao informado, pra comparação mês a mês. */
+export function previousMonthRange(year: number, month: number): WeekRange {
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  return monthRange(prevYear, prevMonth);
+}
+
 /** Converte um timestamp (ISO, UTC) da API em Date, para comparar com os limites da semana. */
 export function parseApiTimestamp(iso: string): Date {
   return new Date(iso);

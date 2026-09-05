@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSettings, listDepartments } from "@/lib/db";
 import { fetchAttendances } from "@/lib/suri";
-import { previousWeek, weekRangeForMonday } from "@/lib/weeks";
+import { monthRange, previousMonthRange, previousWeek, weekRangeForMonday } from "@/lib/weeks";
 import { buildReport } from "@/lib/metrics";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   try {
+    const mode = req.nextUrl.searchParams.get("mode") === "month" ? "month" : "week";
     const mondayDate = req.nextUrl.searchParams.get("weekStart");
+    const yearParam = Number(req.nextUrl.searchParams.get("year"));
+    const monthParam = Number(req.nextUrl.searchParams.get("month"));
     const departmentIdsParam = req.nextUrl.searchParams.get("departmentIds"); // opcional, csv
     const attendantIdsParam = req.nextUrl.searchParams.get("attendantIds"); // opcional, csv — filtro pessoal (não salvo no banco)
     const personalAttendantIds = attendantIdsParam ? attendantIdsParam.split(",").filter(Boolean) : null;
-    if (!mondayDate) {
+
+    if (mode === "week" && !mondayDate) {
       return NextResponse.json({ error: "weekStart (YYYY-MM-DD, uma segunda-feira) é obrigatório" }, { status: 400 });
+    }
+    if (mode === "month" && (!yearParam || !monthParam || monthParam < 1 || monthParam > 12)) {
+      return NextResponse.json({ error: "year e month (1-12) são obrigatórios no modo mensal" }, { status: 400 });
     }
 
     const settings = await getSettings();
@@ -31,8 +38,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Nenhum setor ativo configurado. Adicione setores na sessão de ajustes." }, { status: 400 });
     }
 
-    const currentWeek = weekRangeForMonday(mondayDate);
-    const prevWeek = previousWeek(mondayDate);
+    const currentWeek = mode === "month" ? monthRange(yearParam, monthParam) : weekRangeForMonday(mondayDate!);
+    const prevWeek = mode === "month" ? previousMonthRange(yearParam, monthParam) : previousWeek(mondayDate!);
 
     // Busca por setor (filtro departmentId direto na API), uma chamada por
     // setor ativo, para as duas semanas em paralelo.

@@ -37,6 +37,7 @@ body{
   padding: 0.1vh 2vw;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
+  z-index: 1;
 }
 .topbar-breadcrumb{ font-size: 11.5px; color: var(--text-faint); margin-bottom: 2px; }
 .topbar-title{ font-size: 16px; font-weight: 600; color: var(--text); }
@@ -262,6 +263,30 @@ h1{ font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4
 }
 .dept-config-head span:nth-child(n+3){ text-align:center; }
 .dept-config-row input[type=number]{ text-align:center; }
+
+/* VIEW MODE (semana x mês inteiro) */
+.view-mode-toggle{
+  display:inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.view-mode-toggle button{
+  background: var(--panel-2);
+  border: none;
+  color: var(--text-dim);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  cursor: pointer;
+}
+.view-mode-toggle button + button{ border-left: 1px solid var(--line); }
+.view-mode-toggle button:hover{ color: var(--text); }
+.view-mode-toggle button.on{
+  background: rgba(91,168,245,0.12);
+  color: var(--text);
+  font-weight: 500;
+}
 
 /* DEPARTMENT TOGGLES (setores no relatório) */
 .dept-toggle-list{ display:flex; flex-wrap:wrap; gap: 8px; }
