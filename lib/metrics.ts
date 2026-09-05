@@ -40,12 +40,16 @@ export type DepartmentReport = {
 
 export type Callout = { level: "good" | "warn" | "bad"; departmentId: string; text: string };
 
+/** callout agregado por setor (combina várias métricas numa frase só), usado no resumo final */
+export type SummaryCallout = { level: "good" | "warn" | "bad"; emoji: string; departmentId: string; departmentName: string; text: string };
+
 export type ReportResult = {
   currentWeek: { label: string; mondayDate: string; start: string; end: string };
   previousWeek: { label: string; mondayDate: string; start: string; end: string };
   departments: DepartmentReport[];
   highlights: Callout[];
   attention: Callout[];
+  summary: { highlights: SummaryCallout[]; attention: SummaryCallout[] };
 };
 
 const MIN_CSAT_SAMPLE = 5;
@@ -147,6 +151,182 @@ function deltaPct(from: number, to: number): number | null {
   return ((to - from) / from) * 100;
 }
 
+// quantas vezes o valor multiplicou (>=1 sempre): pct=122 (aumentou) -> 2.22x; pct=-60 (caiu) -> 2.5x menor
+function ratioOf(pct: number): number {
+  return pct >= 0 ? 1 + pct / 100 : 1 / (1 + pct / 100);
+}
+
+function severityOf(pct: number): "mild" | "moderate" | "severe" {
+  if (ratioOf(pct) >= 1.8) return "severe";
+  if (Math.abs(pct) >= 20) return "moderate";
+  return "mild";
+}
+
+/** verbo que descreve a direção e a intensidade real do número, independente de ser bom ou ruim */
+function changeVerb(key: MetricKey, pct: number): string {
+  const csat = key === "csat";
+  const ratio = ratioOf(pct);
+  if (pct > 0) {
+    if (ratio >= 3) return "disparou";
+    if (ratio >= 1.8) return "quase dobrou";
+    if (pct >= 30) return csat ? "subiu bastante" : "aumentou bastante";
+    return csat ? "subiu" : "aumentou";
+  }
+  if (ratio >= 3) return "despencou";
+  if (ratio >= 1.8) return "caiu quase pela metade";
+  if (pct <= -30) return csat ? "caiu bastante" : "diminuiu bastante";
+  return csat ? "caiu" : "diminuiu";
+}
+
+/** pra métricas de tempo, estourar a meta é ficar ACIMA; pro CSAT (nota), é ficar ABAIXO */
+function failWord(key: MetricKey): string {
+  return key === "csat" ? "abaixo" : "acima";
+}
+
+/** remove o prefixo "meta " do goalLabel, pra encaixar em frases tipo "rompendo a meta (${threshold})" */
+function goalThreshold(goalLabel: string): string {
+  return goalLabel.replace(/^meta\s*/i, "");
+}
+
+function joinNatural(items: string[]): string {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0];
+  return `${items.slice(0, -1).join(", ")} e ${items[items.length - 1]}`;
+}
+
+function numberWord(n: number): string {
+  const words: Record<number, string> = { 2: "duas", 3: "três", 4: "quatro" };
+  return words[n] ?? String(n);
+}
+
+type MetricOutcome = DepartmentReport["metrics"][number];
+
+/**
+ * Combina os resultados de todas as métricas de um setor num resumo mais enxuto
+ * (poucas frases narrativas por setor, em vez de um callout por métrica).
+ */
+function summarizeDepartment(
+  deptId: string,
+  deptName: string,
+  metrics: MetricOutcome[]
+): { highlights: SummaryCallout[]; attention: SummaryCallout[] } {
+  // prevGoalMet só é null quando não há dado da semana anterior — nesses casos deltaPct também é null,
+  // então filtrar por deltaPct != null já garante prevGoalMet booleano daqui em diante.
+  const withDelta = metrics.filter((m): m is MetricOutcome & { deltaPct: number } => m.deltaPct != null);
+
+  const recovered = withDelta.filter((m) => m.goalMet === true && m.prevGoalMet === false);
+  const improvedInGoal = withDelta.filter(
+    (m) => m.goalMet === true && m.prevGoalMet === true && m.isImprovement && Math.abs(m.deltaPct) >= 10
+  );
+  const worsenedInGoal = withDelta.filter(
+    (m) => m.goalMet === true && m.prevGoalMet === true && !m.isImprovement && Math.abs(m.deltaPct) >= 15
+  );
+
+  const brokeGoal = withDelta.filter((m) => m.goalMet === false && m.prevGoalMet === true);
+  const severeBroke = brokeGoal.filter((m) => severityOf(m.deltaPct) === "severe");
+  const moderateBroke = brokeGoal.filter((m) => severityOf(m.deltaPct) !== "severe");
+
+  const stillFailing = withDelta.filter((m) => m.goalMet === false && m.prevGoalMet === false);
+  const severeStillFailing = stillFailing.filter((m) => !m.isImprovement && severityOf(m.deltaPct) === "severe");
+  const otherStillFailing = stillFailing.filter((m) => !severeStillFailing.includes(m));
+
+  const highlights: SummaryCallout[] = [];
+  const attention: SummaryCallout[] = [];
+
+  // --- destaques ---
+  if (recovered.length >= 2) {
+    const names = joinNatural(recovered.map((m) => m.label));
+    const extra = improvedInGoal.length > 0 ? `, e reduziu significativamente ${joinNatural(improvedInGoal.map((m) => m.label))}` : "";
+    highlights.push({
+      level: "good",
+      emoji: "🌟",
+      departmentId: deptId,
+      departmentName: deptName,
+      text: `${deptName}: recuperou ${names}, voltando a cumprir as ${numberWord(recovered.length)} metas após a semana anterior fora do padrão${extra}.`,
+    });
+  } else if (recovered.length === 1) {
+    const extra = improvedInGoal.length > 0 ? ` e reduziu significativamente ${joinNatural(improvedInGoal.map((m) => m.label))}` : "";
+    highlights.push({
+      level: "good",
+      emoji: "📈",
+      departmentId: deptId,
+      departmentName: deptName,
+      text: `${deptName}: voltou a atingir a meta de ${recovered[0].label}${extra}.`,
+    });
+  } else if (improvedInGoal.length >= 2) {
+    highlights.push({
+      level: "good",
+      emoji: "📈",
+      departmentId: deptId,
+      departmentName: deptName,
+      text: `${deptName}: melhorou significativamente ${joinNatural(improvedInGoal.map((m) => m.label))}, seguindo dentro das metas.`,
+    });
+  } else if (improvedInGoal.length === 1) {
+    const m = improvedInGoal[0];
+    highlights.push({
+      level: "good",
+      emoji: "📈",
+      departmentId: deptId,
+      departmentName: deptName,
+      text: `${deptName}: ${m.label} melhorou significativamente (${m.from} → ${m.to}), seguindo dentro da meta (${goalThreshold(m.goalLabel)}).`,
+    });
+  }
+
+  // --- pontos de atenção graves: um bullet por métrica, sem diluir o alerta ---
+  for (const m of severeBroke) {
+    const verb = changeVerb(m.key, m.deltaPct);
+    const threshold = goalThreshold(m.goalLabel);
+    const text =
+      ratioOf(m.deltaPct) >= 3
+        ? `${deptName}: ${m.label} ${verb} de ${m.from} para ${m.to}, ficando bem ${failWord(m.key)} da meta (${threshold}).`
+        : `${deptName}: ${m.label} ${verb} (${m.from} → ${m.to}), rompendo a meta (${threshold}).`;
+    attention.push({ level: "bad", emoji: "🔴", departmentId: deptId, departmentName: deptName, text });
+  }
+  for (const m of severeStillFailing) {
+    const verb = changeVerb(m.key, m.deltaPct);
+    attention.push({
+      level: "bad",
+      emoji: "🔴",
+      departmentId: deptId,
+      departmentName: deptName,
+      text: `${deptName}: ${m.label} ${verb} (${m.from} → ${m.to}) e segue ${failWord(m.key)} da meta (${goalThreshold(m.goalLabel)}) pela segunda semana consecutiva.`,
+    });
+  }
+
+  // --- pontos de atenção moderados: combinados numa única frase por setor ---
+  const moderateFragments: string[] = [];
+  for (const m of moderateBroke) {
+    const verb = changeVerb(m.key, m.deltaPct);
+    moderateFragments.push(`${m.label} ${verb} e passou a ficar ${failWord(m.key)} da meta (${goalThreshold(m.goalLabel)}) esta semana, com ${m.to}`);
+  }
+  for (const m of otherStillFailing) {
+    moderateFragments.push(
+      m.isImprovement
+        ? `${m.label} melhorou mas segue ${failWord(m.key)} da meta (${goalThreshold(m.goalLabel)}), com ${m.to}`
+        : `${m.label} segue ${failWord(m.key)} da meta pela segunda semana consecutiva, com ${m.to}`
+    );
+  }
+  for (const m of worsenedInGoal) {
+    const verb = changeVerb(m.key, m.deltaPct);
+    moderateFragments.push(`${m.label} ${verb} mas segue dentro da meta (${goalThreshold(m.goalLabel)})`);
+  }
+  if (metrics.some((m) => m.sampleTooSmall)) {
+    moderateFragments.push(`CSAT tem poucas respostas nesta semana — leitura sensível à amostra pequena`);
+  }
+
+  if (moderateFragments.length > 0) {
+    attention.push({
+      level: "warn",
+      emoji: "⚠️",
+      departmentId: deptId,
+      departmentName: deptName,
+      text: `${deptName}: ${joinNatural(moderateFragments)}.`,
+    });
+  }
+
+  return { highlights, attention };
+}
+
 export function buildReport(
   departments: Department[],
   currentRecordsRaw: SuriAttendance[],
@@ -159,6 +339,8 @@ export function buildReport(
 
   const highlights: ReportResult["highlights"] = [];
   const attention: ReportResult["attention"] = [];
+  const summaryHighlights: SummaryCallout[] = [];
+  const summaryAttention: SummaryCallout[] = [];
 
   const deptReports: DepartmentReport[] = departments.map((dept) => {
     const cur = aggregate(recordsForDepartment(currentRecords, dept));
@@ -213,28 +395,30 @@ export function buildReport(
       if (m.deltaPct == null) continue;
       const abs = Math.abs(m.deltaPct);
       const pctStr = abs.toFixed(1).replace(".", ",");
-      // verbo que descreve a direção real do número (independe de ser bom ou ruim)
-      const verb = m.key === "csat" ? (m.deltaPct > 0 ? "subiu" : "caiu") : m.deltaPct > 0 ? "aumentou" : "diminuiu";
+      const verb = changeVerb(m.key, m.deltaPct);
+      const sev = severityOf(m.deltaPct);
+      const threshold = goalThreshold(m.goalLabel);
+      const consecutive = m.prevGoalMet === false ? " pela segunda semana consecutiva" : "";
 
       if (m.goalMet === true) {
         if (m.prevGoalMet === false) {
           highlights.push({
             level: "good",
             departmentId: dept.departmentId,
-            text: `${m.label} voltou a atingir a meta (${m.goalLabel}) após a semana anterior fora do padrão, agora em ${m.to}.`,
+            text: `${m.label} voltou a atingir a meta (${goalThreshold(m.goalLabel)}) após a semana anterior fora do padrão, agora em ${m.to}.`,
           });
         } else if (m.isImprovement && abs >= 10) {
           highlights.push({
             level: "good",
             departmentId: dept.departmentId,
-            text: `${m.label} melhorou ${pctStr}% (${m.from} → ${m.to}) e segue dentro da meta (${m.goalLabel}).`,
+            text: `${m.label} melhorou ${pctStr}% (${m.from} → ${m.to}) e segue dentro da meta (${goalThreshold(m.goalLabel)}).`,
           });
         } else if (!m.isImprovement && abs >= 15) {
           // dentro da meta, mas a tendência é ruim — vale acompanhar antes que estoure a meta
           attention.push({
             level: "warn",
             departmentId: dept.departmentId,
-            text: `${m.label} ${verb} ${pctStr}% (${m.from} → ${m.to}) mas ainda permanece dentro da meta (${m.goalLabel}) ⚠️`,
+            text: `${m.label} ${verb} ${pctStr}% (${m.from} → ${m.to}) mas ainda permanece dentro da meta (${goalThreshold(m.goalLabel)}) ⚠️`,
           });
         }
       } else if (m.goalMet === false) {
@@ -243,26 +427,31 @@ export function buildReport(
           attention.push({
             level: "bad",
             departmentId: dept.departmentId,
-            text: `${m.label} saiu da meta (${m.goalLabel}) nesta semana: ${verb} ${pctStr}% e foi para ${m.to}.`,
+            text:
+              sev === "severe"
+                ? ratioOf(m.deltaPct) >= 3
+                  ? `${m.label} ${verb} de ${m.from} para ${m.to}, ficando bem ${failWord(m.key)} da meta (${threshold}).`
+                  : `${m.label} ${verb} (${m.from} → ${m.to}), rompendo a meta (${threshold}).`
+                : `${m.label} saiu da meta (${goalThreshold(m.goalLabel)}) nesta semana: ${verb} ${pctStr}% e foi para ${m.to}.`,
           });
         } else if (!m.isImprovement && abs >= 20) {
           attention.push({
             level: "bad",
             departmentId: dept.departmentId,
-            text: `${m.label} piorou ${pctStr}% (${m.from} → ${m.to}), seguindo fora da meta (${m.goalLabel}).`,
+            text: `${m.label} ${verb} (${m.from} → ${m.to}), seguindo ${failWord(m.key)} da meta (${goalThreshold(m.goalLabel)})${consecutive}.`,
           });
         } else if (m.isImprovement && abs >= 10) {
           // ainda fora da meta, mas caminhando na direção certa
           attention.push({
             level: "warn",
             departmentId: dept.departmentId,
-            text: `${m.label} ${verb} ${pctStr}% e melhorou (${m.from} → ${m.to}), mas ainda está fora da meta (${m.goalLabel}).`,
+            text: `${m.label} ${verb} ${pctStr}% e melhorou (${m.from} → ${m.to}), mas ainda está ${failWord(m.key)} da meta (${goalThreshold(m.goalLabel)}).`,
           });
         } else {
           attention.push({
             level: "warn",
             departmentId: dept.departmentId,
-            text: `${m.label} segue fora da meta (${m.goalLabel}), atual ${m.to}.`,
+            text: `${m.label} segue ${failWord(m.key)} da meta (${goalThreshold(m.goalLabel)})${consecutive}, com ${m.to}.`,
           });
         }
       }
@@ -275,6 +464,10 @@ export function buildReport(
         });
       }
     }
+
+    const deptSummary = summarizeDepartment(dept.departmentId, dept.name, metrics);
+    summaryHighlights.push(...deptSummary.highlights);
+    summaryAttention.push(...deptSummary.attention);
 
     return {
       departmentId: dept.departmentId,
@@ -307,5 +500,6 @@ export function buildReport(
     departments: deptReports,
     highlights,
     attention,
+    summary: { highlights: summaryHighlights, attention: summaryAttention },
   };
 }

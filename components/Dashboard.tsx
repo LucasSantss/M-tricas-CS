@@ -10,6 +10,7 @@ import SettingsPanel from "./SettingsPanel";
 import SettingsModal from "./SettingsModal";
 import TopBar from "./TopBar";
 import DepartmentCard from "./DepartmentCard";
+import WeeklySummary from "./WeeklySummary";
 import FilterBar from "./FilterBar";
 
 export default function Dashboard() {
@@ -207,6 +208,8 @@ export default function Dashboard() {
               attention={report.attention.filter((a) => a.departmentId === d.departmentId)}
             />
           ))}
+
+          <WeeklySummary highlights={report.summary?.highlights ?? []} attention={report.summary?.attention ?? []} />
 
           <footer>
             Termômetro Operacional do Suporte — comparativo {report.previousWeek.label} vs {report.currentWeek.label}
