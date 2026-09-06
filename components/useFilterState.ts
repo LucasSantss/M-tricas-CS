@@ -128,10 +128,16 @@ export function useFilterState() {
     writeAttendantFilter(ids);
   }, []);
 
-  const activeDepartments = departments.filter((d) => d.active);
+  const activeDepartments = useMemo(() => departments.filter((d) => d.active), [departments]);
   const configured = Boolean(config?.chatbotUrl && config?.hasToken);
 
-  const deptIdsArr = selectedDeptIds ? Array.from(selectedDeptIds) : null;
+  // Precisa ser memoizado: sem isso, Array.from(selectedDeptIds) cria uma
+  // referência nova a cada render, o que muda a identidade de qualquer
+  // useCallback/useEffect que dependa dele — e como o efeito que carrega o
+  // relatório depende de deptIdsArr, isso causava um loop infinito de novas
+  // buscas (a cada resposta, o componente renderizava de novo, gerando um
+  // array novo, disparando outra busca, sem parar).
+  const deptIdsArr = useMemo(() => (selectedDeptIds ? Array.from(selectedDeptIds) : null), [selectedDeptIds]);
   const attendantIdsArr = selectedAttendantIds.length > 0 ? selectedAttendantIds : null;
   const periodKey = viewMode === "month" ? `month:${year}-${String(month).padStart(2, "0")}` : weekStart;
   const periodQuery = viewMode === "month" ? `mode=month&year=${year}&month=${month}` : `weekStart=${weekStart}`;
