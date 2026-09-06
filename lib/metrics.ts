@@ -168,11 +168,13 @@ function changeVerb(key: MetricKey, pct: number): string {
   const ratio = ratioOf(pct);
   if (pct > 0) {
     if (ratio >= 3) return "disparou";
+    if (ratio >= 2) return "mais que dobrou";
     if (ratio >= 1.8) return "quase dobrou";
     if (pct >= 30) return csat ? "subiu bastante" : "aumentou bastante";
     return csat ? "subiu" : "aumentou";
   }
   if (ratio >= 3) return "despencou";
+  if (ratio >= 2) return "caiu mais da metade";
   if (ratio >= 1.8) return "caiu quase pela metade";
   if (pct <= -30) return csat ? "caiu bastante" : "diminuiu bastante";
   return csat ? "caiu" : "diminuiu";
