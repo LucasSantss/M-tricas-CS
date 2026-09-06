@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import Dashboard from "@/components/Dashboard";
+import PercentilesView from "@/components/PercentilesView";
 
 export default function Page() {
   return (
     <Suspense fallback={<div className="loading">Carregando…</div>}>
-      <Dashboard />
+      <PercentilesView />
     </Suspense>
   );
 }

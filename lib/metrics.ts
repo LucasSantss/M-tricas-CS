@@ -33,6 +33,10 @@ export type DepartmentReport = {
     goalMet: boolean | null;
     prevGoalMet: boolean | null;
     sampleTooSmall: boolean;
+    /** quantas semanas seguidas (incluindo a atual) a meta ficou fora, até o limite do histórico consultado */
+    streak: number;
+    /** tamanho da série usada pra calcular o streak — se streak === isso, o streak real pode ser maior (não olhamos mais pra trás) */
+    streakSeriesLength: number;
   }[];
   goalsMet: number;
   goalsTotal: number;
@@ -106,7 +110,7 @@ function aggregate(records: SuriAttendance[]): Agg {
  * aplicado na própria chamada à API Suri (ver app/api/report/route.ts); aqui
  * só garantimos que cada registro pertence de fato ao setor certo.
  */
-function recordsForDepartment(records: SuriAttendance[], dept: Department): SuriAttendance[] {
+export function recordsForDepartment(records: SuriAttendance[], dept: Department): SuriAttendance[] {
   return records.filter((r) => {
     const key = r.departmentId ?? r.departmentName ?? "sem-setor";
     return key === dept.departmentId;
@@ -129,7 +133,7 @@ function filterByWindow(records: SuriAttendance[], week: WeekRange): SuriAttenda
  * reprocessamento interno. Deduplicamos por protocolo para bater com o
  * número de "Finalizados" do próprio portal.
  */
-function dedupeByProtocol(records: SuriAttendance[]): SuriAttendance[] {
+export function dedupeByProtocol(records: SuriAttendance[]): SuriAttendance[] {
   const byProtocol = new Map<string, SuriAttendance>();
   for (const r of records) {
     if (!r.protocol) continue;
@@ -142,8 +146,13 @@ function dedupeByProtocol(records: SuriAttendance[]): SuriAttendance[] {
 }
 
 /** Exclui atendimentos internos de teste (motivo contendo "teste"). */
-function isTestAttendance(r: SuriAttendance): boolean {
+export function isTestAttendance(r: SuriAttendance): boolean {
   return /teste/i.test(r.reason ?? "");
+}
+
+/** Aplica a mesma limpeza usada no relatório principal (janela, dedupe, filtro de teste). */
+export function cleanRecordsForWindow(recordsRaw: SuriAttendance[], week: WeekRange): SuriAttendance[] {
+  return dedupeByProtocol(filterByWindow(recordsRaw, week)).filter((r) => !isTestAttendance(r));
 }
 
 function deltaPct(from: number, to: number): number | null {
@@ -199,6 +208,41 @@ function joinNatural(items: string[]): string {
 function numberWord(n: number): string {
   const words: Record<number, string> = { 2: "duas", 3: "três", 4: "quatro" };
   return words[n] ?? String(n);
+}
+
+/** Conta quantas semanas seguidas (a partir da mais recente, voltando no tempo) a meta ficou fora — para em null/true. */
+function failStreak(seriesOldToNew: (boolean | null)[]): number {
+  let streak = 0;
+  for (let i = seriesOldToNew.length - 1; i >= 0; i--) {
+    if (seriesOldToNew[i] === false) streak++;
+    else break;
+  }
+  return streak;
+}
+
+/**
+ * Frase pra streaks de meta fora do padrão. Quando o streak bate no limite do
+ * histórico disponível (ex.: só olhamos 4 semanas pra trás), usamos "4+" em
+ * vez de afirmar um número exato que pode estar subestimado.
+ */
+function streakPhrase(streak: number, seriesLength: number): string {
+  if (streak >= 3) return ` há ${streak}${streak >= seriesLength ? "+" : ""} semanas seguidas`;
+  if (streak === 2) return " pela segunda semana consecutiva";
+  return "";
+}
+
+function goalMetForValue(key: MetricKey, value: number | null, dept: Department): boolean | null {
+  if (value == null) return null;
+  if (key === "csat") return value >= dept.goalCsat;
+  const goalSeconds = key === "tme" ? dept.goalTmeSeconds : key === "tma" ? dept.goalTmaSeconds : dept.goalTmrSeconds;
+  return value <= goalSeconds;
+}
+
+function goalMetForWeek(recordsRaw: SuriAttendance[], week: WeekRange, dept: Department, key: MetricKey): boolean | null {
+  const records = recordsForDepartment(cleanRecordsForWindow(recordsRaw, week), dept);
+  const agg = aggregate(records);
+  const series = key === "tme" ? agg.tmeSeconds : key === "tma" ? agg.tmaSeconds : key === "tmr" ? agg.tmrSeconds : agg.csatValues;
+  return goalMetForValue(key, avg(series), dept);
 }
 
 type MetricOutcome = DepartmentReport["metrics"][number];
@@ -286,12 +330,13 @@ function summarizeDepartment(
   }
   for (const m of severeStillFailing) {
     const verb = changeVerb(m.key, m.deltaPct);
+    const consecutive = streakPhrase(m.streak, m.streakSeriesLength) || " pela segunda semana consecutiva";
     attention.push({
       level: "bad",
       emoji: "🔴",
       departmentId: deptId,
       departmentName: deptName,
-      text: `${deptName}: ${m.label} ${verb} (${m.from} → ${m.to}) e segue ${failWord(m.key)} da meta (${goalThreshold(m.goalLabel)}) pela segunda semana consecutiva.`,
+      text: `${deptName}: ${m.label} ${verb} (${m.from} → ${m.to}) e segue ${failWord(m.key)} da meta (${goalThreshold(m.goalLabel)})${consecutive}.`,
     });
   }
 
@@ -302,10 +347,11 @@ function summarizeDepartment(
     moderateFragments.push(`${m.label} ${verb} e passou a ficar ${failWord(m.key)} da meta (${goalThreshold(m.goalLabel)}) esta semana, com ${m.to}`);
   }
   for (const m of otherStillFailing) {
+    const consecutive = streakPhrase(m.streak, m.streakSeriesLength) || " pela segunda semana consecutiva";
     moderateFragments.push(
       m.isImprovement
         ? `${m.label} melhorou mas segue ${failWord(m.key)} da meta (${goalThreshold(m.goalLabel)}), com ${m.to}`
-        : `${m.label} segue ${failWord(m.key)} da meta pela segunda semana consecutiva, com ${m.to}`
+        : `${m.label} segue ${failWord(m.key)} da meta${consecutive}, com ${m.to}`
     );
   }
   for (const m of worsenedInGoal) {
@@ -334,10 +380,12 @@ export function buildReport(
   currentRecordsRaw: SuriAttendance[],
   previousRecordsRaw: SuriAttendance[],
   currentWeek: WeekRange,
-  previousWeek: WeekRange
+  previousWeek: WeekRange,
+  /** semanas mais antigas que "previousWeek", da mais antiga pra mais recente — só usadas pra detectar streaks de 3+ semanas fora da meta; o comparativo principal continua sendo só semana atual x anterior. */
+  extraHistoryWeeksOldToNew: { week: WeekRange; records: SuriAttendance[] }[] = []
 ): ReportResult {
-  const currentRecords = dedupeByProtocol(filterByWindow(currentRecordsRaw, currentWeek)).filter((r) => !isTestAttendance(r));
-  const previousRecords = dedupeByProtocol(filterByWindow(previousRecordsRaw, previousWeek)).filter((r) => !isTestAttendance(r));
+  const currentRecords = cleanRecordsForWindow(currentRecordsRaw, currentWeek);
+  const previousRecords = cleanRecordsForWindow(previousRecordsRaw, previousWeek);
 
   const highlights: ReportResult["highlights"] = [];
   const attention: ReportResult["attention"] = [];
@@ -389,7 +437,11 @@ export function buildReport(
 
       const sampleTooSmall = isCsat && cur.csatValues.length < MIN_CSAT_SAMPLE;
 
-      return { key: def.key, label: def.label, from, to, goalLabel, deltaPct: pct, direction, isImprovement, goalMet, prevGoalMet, sampleTooSmall };
+      const historyGoalMets = extraHistoryWeeksOldToNew.map((h) => goalMetForWeek(h.records, h.week, dept, def.key));
+      const streakSeries = [...historyGoalMets, prevGoalMet, goalMet];
+      const streak = failStreak(streakSeries);
+
+      return { key: def.key, label: def.label, from, to, goalLabel, deltaPct: pct, direction, isImprovement, goalMet, prevGoalMet, sampleTooSmall, streak, streakSeriesLength: streakSeries.length };
     });
 
     // destaques e pontos de atenção, gerados a partir dos números reais
@@ -400,7 +452,7 @@ export function buildReport(
       const verb = changeVerb(m.key, m.deltaPct);
       const sev = severityOf(m.deltaPct);
       const threshold = goalThreshold(m.goalLabel);
-      const consecutive = m.prevGoalMet === false ? " pela segunda semana consecutiva" : "";
+      const consecutive = streakPhrase(m.streak, m.streakSeriesLength);
 
       if (m.goalMet === true) {
         if (m.prevGoalMet === false) {

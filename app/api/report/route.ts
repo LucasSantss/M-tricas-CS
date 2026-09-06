@@ -41,8 +41,20 @@ export async function GET(req: NextRequest) {
     const currentWeek = mode === "month" ? monthRange(yearParam, monthParam) : weekRangeForMonday(mondayDate!);
     const prevWeek = mode === "month" ? previousMonthRange(yearParam, monthParam) : previousWeek(mondayDate!);
 
+    // Só no modo semanal: mais 2 semanas pra trás de "prevWeek", usadas
+    // exclusivamente pra detectar streaks de 3+ semanas fora da meta. O
+    // comparativo principal do relatório continua sendo só atual x anterior.
+    const historyWeeksOldToNew =
+      mode === "week"
+        ? (() => {
+            const back2 = previousWeek(prevWeek.mondayDate);
+            const back3 = previousWeek(back2.mondayDate);
+            return [back3, back2];
+          })()
+        : [];
+
     // Busca por setor (filtro departmentId direto na API), uma chamada por
-    // setor ativo, para as duas semanas em paralelo.
+    // setor ativo, para as semanas envolvidas em paralelo.
     const perDepartment = await Promise.all(
       departments.map(async (dept) => {
         // Filtro pessoal de atendentes (query string, nunca salvo no banco) tem
@@ -51,32 +63,32 @@ export async function GET(req: NextRequest) {
         const effectiveAttendantIds = personalAttendantIds ?? dept.attendantIds;
         const attendantId =
           effectiveAttendantIds.length === 0 ? undefined : effectiveAttendantIds.length === 1 ? effectiveAttendantIds[0] : effectiveAttendantIds;
-        const [current, previous] = await Promise.all([
+        const fetchFor = (w: { mondayDate: string; saturdayDate: string }) =>
           fetchAttendances(settings.chatbotUrl!, settings.bearerToken!, {
-            dateFrom: currentWeek.mondayDate,
-            dateTo: currentWeek.saturdayDate,
+            dateFrom: w.mondayDate,
+            dateTo: w.saturdayDate,
             departmentId: dept.departmentId,
             attendantId,
             getCurrent: settings.getCurrent,
             useBusinessHours: settings.useBusinessHours,
-          }),
-          fetchAttendances(settings.chatbotUrl!, settings.bearerToken!, {
-            dateFrom: prevWeek.mondayDate,
-            dateTo: prevWeek.saturdayDate,
-            departmentId: dept.departmentId,
-            attendantId,
-            getCurrent: settings.getCurrent,
-            useBusinessHours: settings.useBusinessHours,
-          }),
+          });
+        const [current, previous, ...history] = await Promise.all([
+          fetchFor(currentWeek),
+          fetchFor(prevWeek),
+          ...historyWeeksOldToNew.map(fetchFor),
         ]);
-        return { current, previous };
+        return { current, previous, history };
       })
     );
 
     const currentRecords = perDepartment.flatMap((p) => p.current);
     const previousRecords = perDepartment.flatMap((p) => p.previous);
+    const extraHistoryWeeksOldToNew = historyWeeksOldToNew.map((week, i) => ({
+      week,
+      records: perDepartment.flatMap((p) => p.history[i] ?? []),
+    }));
 
-    const report = buildReport(departments, currentRecords, previousRecords, currentWeek, prevWeek);
+    const report = buildReport(departments, currentRecords, previousRecords, currentWeek, prevWeek, extraHistoryWeeksOldToNew);
     return NextResponse.json(report);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

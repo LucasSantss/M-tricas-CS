@@ -57,6 +57,7 @@ body{
 }
 .topbar-icon-btn:hover{ border-color: var(--accent); }
 .topbar-icon-btn:disabled{ opacity: .5; cursor: default; }
+a.topbar-icon-btn{ text-decoration: none; color: var(--text); }
 .topbar-avatar{
   border: none;
   background: none;
@@ -115,6 +116,7 @@ header{ padding: 32px 0 24px; border-bottom: 1px solid var(--line); margin-botto
 h1{ font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4px; }
 .subtitle{ font-family:'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-dim); }
 .page-header-row{ display:flex; align-items:center; justify-content:space-between; gap: 12px; flex-wrap: wrap; }
+.page-header-actions{ display:flex; align-items:center; gap: 8px; }
 
 /* FILTER BAR */
 .filter-bar{ display:flex; flex-direction:column; gap: 16px; margin-bottom: 24px; }
@@ -398,6 +400,40 @@ h1{ font-size: 28px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
+
+/* PERCENTIS — um card por setor, com TME/TMA/TMR dentro de cada um */
+.percentile-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.pct-dept-card{
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.pct-dept-head{
+  display:flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
+.pct-dept-head h2{ font-size: 15px; font-weight: 600; }
+.pct-dept-count{ font-family:'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--text-dim); white-space: nowrap; }
+.pct-dept-body{ padding: 16px 18px; display:flex; flex-direction:column; gap: 18px; }
+.pct-metric-row{ display:flex; flex-direction:column; gap: 7px; }
+.pct-metric-label{ font-size: 11px; font-weight: 600; color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; }
+.pct-metric-bars{ display:flex; flex-direction:column; gap: 5px; }
+.pct-bar-line{ display:grid; grid-template-columns: 30px 1fr 62px; align-items:center; gap: 10px; }
+.pct-bar-tag{ font-size: 10.5px; font-weight: 700; font-family:'IBM Plex Mono', monospace; }
+.pct-bar-track{ height: 7px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.pct-bar-fill{ height: 100%; border-radius: 999px; }
+.pct-bar-value{ font-family:'IBM Plex Mono', monospace; font-size: 12px; color: var(--text); text-align: right; white-space: nowrap; }
 
 .error-box{
   border: 1px solid var(--bad);

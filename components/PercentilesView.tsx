@@ -1,0 +1,99 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useFilterState } from "./useFilterState";
+import SettingsPanel from "./SettingsPanel";
+import SettingsModal from "./SettingsModal";
+import TopBar from "./TopBar";
+import FilterBar from "./FilterBar";
+import PercentileDeptCard from "./PercentileDeptCard";
+
+type Stats = { p50: number | null; p75: number | null; p90: number | null; count: number };
+type PercentileDept = { departmentId: string; name: string; tme: Stats; tma: Stats; tmr: Stats };
+type PercentileResponse = { period: { label: string; mondayDate: string; saturdayDate: string }; departments: PercentileDept[] };
+
+export default function PercentilesView() {
+  const f = useFilterState();
+  const [data, setData] = useState<PercentileResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const deptIdsKey = f.deptIdsArr?.join(",") ?? "";
+  const attendantIdsKey = f.attendantIdsArr?.join(",") ?? "";
+
+  useEffect(() => {
+    if (!f.prefsLoaded || !f.configured) return;
+    if (f.viewMode === "week" && !f.weekStart) return;
+
+    setError(null);
+    setLoading(true);
+    const idsParam = deptIdsKey ? `&departmentIds=${deptIdsKey}` : "";
+    const attendantsParam = attendantIdsKey ? `&attendantIds=${attendantIdsKey}` : "";
+    fetch(`/api/percentiles?${f.periodQuery}${idsParam}${attendantsParam}`)
+      .then(async (res) => {
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? "Falha ao carregar percentis");
+        setData(json);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [f.prefsLoaded, f.configured, f.viewMode, f.weekStart, f.periodQuery, deptIdsKey, attendantIdsKey]);
+
+  return (
+    <>
+      <TopBar breadcrumb="Relatórios / Suporte" title="Percentis operacionais" configured={f.configured} onOpenSettings={() => setSettingsOpen(true)} />
+
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)}>
+        <SettingsPanel config={f.config} departments={f.departments} onConfigSaved={f.loadConfig} onDepartmentsChanged={f.loadDepartments} />
+      </SettingsModal>
+
+      <div className="wrap">
+        <header>
+          <div className="page-header-row">
+            <h1>Percentis operacionais</h1>
+          </div>
+          {data && (
+            <div className="subtitle">
+              {data.period.label} · distribuição de TME, TMA e TMR (P50/P75/P90) por setor
+            </div>
+          )}
+        </header>
+
+        <FilterBar
+          year={f.year}
+          onYearChange={f.setYear}
+          month={f.month}
+          onMonthChange={f.setMonth}
+          viewMode={f.viewMode}
+          onViewModeChange={f.setViewMode}
+          weeks={f.weeks}
+          weekStart={f.weekStart}
+          onWeekStartChange={f.setWeekStart}
+          activeDepartments={f.activeDepartments}
+          selectedAttendantIds={f.selectedAttendantIds}
+          onAttendantFilterChange={f.updateAttendantFilter}
+          selectedDeptIds={f.selectedDeptIds}
+          onSelectedDeptIdsChange={f.setSelectedDeptIds}
+        />
+
+        {!f.configured && (
+          <div className="error-box">
+            Configure a URL do chatbot e o token clicando no ícone de ajustes (⚙️) no topo da página para começar.
+          </div>
+        )}
+        {error && <div className="error-box">{error}</div>}
+        {loading && <div className="loading">Carregando percentis…</div>}
+
+        {data && !loading && (
+          <div className="percentile-grid">
+            {data.departments.map((d) => (
+              <PercentileDeptCard key={d.departmentId} name={d.name} tme={d.tme} tma={d.tma} tmr={d.tmr} />
+            ))}
+            {data.departments.length === 0 && <div className="hint">Nenhum setor para exibir.</div>}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}

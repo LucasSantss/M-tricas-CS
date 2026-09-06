@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
 type Props = {
   breadcrumb: string;
   title: string;
@@ -8,6 +11,9 @@ type Props = {
 };
 
 export default function TopBar({ breadcrumb, title, configured, onOpenSettings }: Props) {
+  const pathname = usePathname();
+  const onPercentis = pathname?.startsWith("/percentis");
+
   return (
     <div className="topbar">
       <div className="topbar-left">
@@ -15,6 +21,13 @@ export default function TopBar({ breadcrumb, title, configured, onOpenSettings }
         <div className="topbar-title">{title}</div>
       </div>
       <div className="topbar-right">
+        <Link
+          href={onPercentis ? "/" : "/percentis"}
+          className="topbar-icon-btn"
+          title={onPercentis ? "Voltar ao relatório" : "Ver percentis (P50/P75/P90)"}
+        >
+          {onPercentis ? "📋" : "📊"}
+        </Link>
         <button
           className="topbar-icon-btn"
           title={configured ? "Ajustes (conectado)" : "Ajustes (conecte a API)"}

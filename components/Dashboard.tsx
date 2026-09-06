@@ -1,11 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ConfigResponse, DepartmentDto, WeekDto } from "@/lib/types";
+import { useCallback, useEffect, useState } from "react";
 import type { ReportResult } from "@/lib/metrics";
 import { isFresh, readReportCache, writeReportCache } from "@/lib/reportCache";
-import { readAttendantFilter, writeAttendantFilter } from "@/lib/attendantFilter";
-import { readDashboardPrefs, writeDashboardPrefs } from "@/lib/dashboardPrefs";
+import { useFilterState } from "./useFilterState";
 import SettingsPanel from "./SettingsPanel";
 import SettingsModal from "./SettingsModal";
 import TopBar from "./TopBar";
@@ -14,102 +12,32 @@ import WeeklySummary from "./WeeklySummary";
 import FilterBar from "./FilterBar";
 
 export default function Dashboard() {
-  const now = useMemo(() => new Date(), []);
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [weeks, setWeeks] = useState<WeekDto[]>([]);
-  const [weekStart, setWeekStart] = useState<string>("");
-  const [viewMode, setViewMode] = useState<"week" | "month">("week");
-
-  const [config, setConfig] = useState<ConfigResponse | null>(null);
-  const [departments, setDepartments] = useState<DepartmentDto[]>([]);
-  const [selectedDeptIds, setSelectedDeptIds] = useState<Set<string> | null>(null); // null = todos
-  // filtro pessoal de atendentes — só existe no navegador (localStorage), nunca no banco
-  const [selectedAttendantIds, setSelectedAttendantIds] = useState<string[]>([]);
-  useEffect(() => setSelectedAttendantIds(readAttendantFilter()), []);
-  const updateAttendantFilter = useCallback((ids: string[]) => {
-    setSelectedAttendantIds(ids);
-    writeAttendantFilter(ids);
-  }, []);
-
-  // restaura ano/mês/semana/setores da última visita (cache do navegador, por pessoa)
-  const [prefsLoaded, setPrefsLoaded] = useState(false);
-  useEffect(() => {
-    const prefs = readDashboardPrefs();
-    if (prefs.year) setYear(prefs.year);
-    if (prefs.month) setMonth(prefs.month);
-    if (prefs.weekStart) setWeekStart(prefs.weekStart);
-    if (prefs.viewMode) setViewMode(prefs.viewMode);
-    if (prefs.deptIds !== undefined) setSelectedDeptIds(prefs.deptIds ? new Set(prefs.deptIds) : null);
-    setPrefsLoaded(true);
-  }, []);
-  useEffect(() => {
-    if (!prefsLoaded) return;
-    writeDashboardPrefs({
-      year,
-      month,
-      weekStart,
-      viewMode,
-      deptIds: selectedDeptIds ? Array.from(selectedDeptIds) : null,
-    });
-  }, [prefsLoaded, year, month, weekStart, viewMode, selectedDeptIds]);
+  const f = useFilterState();
 
   const [report, setReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reportSavedAt, setReportSavedAt] = useState<number | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const loadConfig = useCallback(async () => {
-    const res = await fetch("/api/config");
-    setConfig(await res.json());
-  }, []);
-
-  const loadDepartments = useCallback(async () => {
-    const res = await fetch("/api/departments");
-    const json = await res.json();
-    setDepartments(json.departments ?? []);
-  }, []);
-
-  useEffect(() => {
-    loadConfig();
-    loadDepartments();
-  }, [loadConfig, loadDepartments]);
-
   const [checkedInitialConfig, setCheckedInitialConfig] = useState(false);
   useEffect(() => {
-    if (!config || checkedInitialConfig) return;
+    if (!f.config || checkedInitialConfig) return;
     setCheckedInitialConfig(true);
-    if (!config.chatbotUrl || !config.hasToken) setSettingsOpen(true);
-  }, [config, checkedInitialConfig]);
-
-  useEffect(() => {
-    if (!prefsLoaded || viewMode !== "week") return; // espera restaurar ano/mês/semana do cache antes de buscar, pra não sobrescrever com o mês atual
-    (async () => {
-      const res = await fetch(`/api/weeks?year=${year}&month=${month}`);
-      const json = await res.json();
-      const list: WeekDto[] = json.weeks ?? [];
-      setWeeks(list);
-      if (list.length > 0 && !list.find((w) => w.mondayDate === weekStart)) {
-        setWeekStart(list[list.length - 1].mondayDate);
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    })();
-  }, [year, month, prefsLoaded, viewMode]);
+    if (!f.config.chatbotUrl || !f.config.hasToken) setSettingsOpen(true);
+  }, [f.config, checkedInitialConfig]);
 
   const loadReport = useCallback(
     async (force = false) => {
-      if (viewMode === "week" && !weekStart) return;
-      if (!config?.chatbotUrl || !config?.hasToken) return;
-      const deptIdsArr = selectedDeptIds ? Array.from(selectedDeptIds) : null;
-      const attendantIdsArr = selectedAttendantIds.length > 0 ? selectedAttendantIds : null;
-      const periodKey = viewMode === "month" ? `month:${year}-${String(month).padStart(2, "0")}` : weekStart;
-      const periodParam = viewMode === "month" ? `mode=month&year=${year}&month=${month}` : `weekStart=${weekStart}`;
+      if (!f.prefsLoaded) return;
+      if (f.viewMode === "week" && !f.weekStart) return;
+      if (!f.config?.chatbotUrl || !f.config?.hasToken) return;
       setError(null);
 
-      const cached = force ? null : readReportCache(periodKey, deptIdsArr, attendantIdsArr);
+      const cached = force ? null : readReportCache(f.periodKey, f.deptIdsArr, f.attendantIdsArr);
       if (cached) {
         setReport(cached.report);
         setReportSavedAt(cached.savedAt);
@@ -119,13 +47,13 @@ export default function Dashboard() {
       if (cached) setRefreshing(true);
       else setLoading(true);
       try {
-        const idsParam = deptIdsArr && deptIdsArr.length > 0 ? `&departmentIds=${deptIdsArr.join(",")}` : "";
-        const attendantsParam = attendantIdsArr ? `&attendantIds=${attendantIdsArr.join(",")}` : "";
-        const res = await fetch(`/api/report?${periodParam}${idsParam}${attendantsParam}`);
+        const idsParam = f.deptIdsArr && f.deptIdsArr.length > 0 ? `&departmentIds=${f.deptIdsArr.join(",")}` : "";
+        const attendantsParam = f.attendantIdsArr ? `&attendantIds=${f.attendantIdsArr.join(",")}` : "";
+        const res = await fetch(`/api/report?${f.periodQuery}${idsParam}${attendantsParam}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? "Falha ao carregar relatório");
         setReport(json);
-        writeReportCache(periodKey, deptIdsArr, attendantIdsArr, json);
+        writeReportCache(f.periodKey, f.deptIdsArr, f.attendantIdsArr, json);
         setReportSavedAt(Date.now());
       } catch (e: any) {
         setError(e.message);
@@ -135,36 +63,48 @@ export default function Dashboard() {
         setRefreshing(false);
       }
     },
-    [viewMode, year, month, weekStart, config, selectedDeptIds, selectedAttendantIds]
+    [f.prefsLoaded, f.viewMode, f.weekStart, f.config, f.periodKey, f.periodQuery, f.deptIdsArr, f.attendantIdsArr]
   );
 
   useEffect(() => {
     loadReport();
   }, [loadReport]);
 
-  const activeDepartments = departments.filter((d) => d.active);
-  const configured = Boolean(config?.chatbotUrl && config?.hasToken);
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1500);
+    } catch {
+      // clipboard indisponível (ex.: contexto não seguro) — ignora silenciosamente
+    }
+  }
 
   return (
     <>
       <TopBar
         breadcrumb="Relatórios / Suporte"
         title="Termômetro Operacional"
-        configured={configured}
+        configured={f.configured}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)}>
-        <SettingsPanel config={config} departments={departments} onConfigSaved={loadConfig} onDepartmentsChanged={loadDepartments} />
+        <SettingsPanel config={f.config} departments={f.departments} onConfigSaved={f.loadConfig} onDepartmentsChanged={f.loadDepartments} />
       </SettingsModal>
 
       <div className="wrap">
         <header>
           <div className="page-header-row">
             <h1>Termômetro Operacional</h1>
-            <button className="btn small" disabled={loading || refreshing} onClick={() => loadReport(true)}>
-              {refreshing ? "Recarregando…" : "🔄 Recarregar"}
-            </button>
+            <div className="page-header-actions">
+              <button className="btn small" onClick={copyLink}>
+                {linkCopied ? "Link copiado ✓" : "🔗 Copiar link"}
+              </button>
+              <button className="btn small" disabled={loading || refreshing} onClick={() => loadReport(true)}>
+                {refreshing ? "Recarregando…" : "🔄 Recarregar"}
+              </button>
+            </div>
           </div>
           {report && (
             <div className="subtitle">
@@ -174,48 +114,48 @@ export default function Dashboard() {
         </header>
 
         <FilterBar
-          year={year}
-          onYearChange={setYear}
-          month={month}
-          onMonthChange={setMonth}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          weeks={weeks}
-          weekStart={weekStart}
-          onWeekStartChange={setWeekStart}
-          activeDepartments={activeDepartments}
-          selectedAttendantIds={selectedAttendantIds}
-          onAttendantFilterChange={updateAttendantFilter}
-          selectedDeptIds={selectedDeptIds}
-          onSelectedDeptIdsChange={setSelectedDeptIds}
+          year={f.year}
+          onYearChange={f.setYear}
+          month={f.month}
+          onMonthChange={f.setMonth}
+          viewMode={f.viewMode}
+          onViewModeChange={f.setViewMode}
+          weeks={f.weeks}
+          weekStart={f.weekStart}
+          onWeekStartChange={f.setWeekStart}
+          activeDepartments={f.activeDepartments}
+          selectedAttendantIds={f.selectedAttendantIds}
+          onAttendantFilterChange={f.updateAttendantFilter}
+          selectedDeptIds={f.selectedDeptIds}
+          onSelectedDeptIdsChange={f.setSelectedDeptIds}
         />
 
-        {!configured && (
+        {!f.configured && (
           <div className="error-box">
             Configure a URL do chatbot e o token clicando no ícone de ajustes (⚙️) no topo da página para começar.
           </div>
         )}
-      {error && <div className="error-box">{error}</div>}
-      {loading && <div className="loading">Carregando relatório…</div>}
+        {error && <div className="error-box">{error}</div>}
+        {loading && <div className="loading">Carregando relatório…</div>}
 
-      {report && !loading && (
-        <>
-          {report.departments.map((d) => (
-            <DepartmentCard
-              key={d.departmentId}
-              report={d}
-              highlights={report.highlights.filter((h) => h.departmentId === d.departmentId)}
-              attention={report.attention.filter((a) => a.departmentId === d.departmentId)}
-            />
-          ))}
+        {report && !loading && (
+          <>
+            {report.departments.map((d) => (
+              <DepartmentCard
+                key={d.departmentId}
+                report={d}
+                highlights={report.highlights.filter((h) => h.departmentId === d.departmentId)}
+                attention={report.attention.filter((a) => a.departmentId === d.departmentId)}
+              />
+            ))}
 
-          <WeeklySummary highlights={report.summary?.highlights ?? []} attention={report.summary?.attention ?? []} />
+            <WeeklySummary highlights={report.summary?.highlights ?? []} attention={report.summary?.attention ?? []} />
 
-          <footer>
-            Termômetro Operacional do Suporte — comparativo {report.previousWeek.label} vs {report.currentWeek.label}
-          </footer>
-        </>
-      )}
+            <footer>
+              Termômetro Operacional do Suporte — comparativo {report.previousWeek.label} vs {report.currentWeek.label}
+            </footer>
+          </>
+        )}
       </div>
     </>
   );
